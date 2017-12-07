@@ -27,7 +27,7 @@ TRACE     = 13, // what's happening (in detail)
 DBG       = 10  // sundry
 
 '''
-
+test_git = 2
 # Print log messages only from the root process in parallel
 parameters["std_out_all_processes"] = False; ### Print log messages only from the root process in parallel
 parameters['form_compiler']['cpp_optimize_flags'] = '-O3 -fno-math-errno -march=native'        
