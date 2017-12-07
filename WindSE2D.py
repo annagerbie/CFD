@@ -111,12 +111,10 @@ def createLayout(numturbs):
             ### select a random y location, within the farm bounds, and such that the entire rotor will be within the farm bounds
             my.append(Constant(np.random.uniform(low=-(site_y - radius), high=(site_y - radius))))
             ### single hub height, z = HH
-            mz.append(Constant(HH)) 
-
-    ###if you've specified a grided starting array 
-    '''Can only accept 16 turbines'''
-    elif gridStart ==True:
-
+            mz.append(Constant(HH))
+    elif gridStart == True:
+        ###if you've specified a grided starting array 
+        ###Can only accept 16 turbines
         if numturbs == 16:
             rows = 4
             cols = 4
@@ -130,8 +128,6 @@ def createLayout(numturbs):
                     # mx.append(Constant(xpos[j]+5.*np.random.randn()))
                     # my.append(Constant(ypos[i]+5.*np.random.randn()))
                     mz.append(Constant(HH))
-
-
     elif restart == True:
         # fixed layout here
         m_temp = [Constant(-113.961988283),Constant(-386.535837904),Constant(-512.116113959),Constant(-237.354391531),Constant(638.697968355),Constant(13.6826901448),Constant(386.535838424),Constant(-113.961987466),Constant(13.6826875361),Constant(-638.697971072),Constant(-887.942379804),Constant(-813.542880381),Constant(813.542880031),Constant(-887.942379852),Constant(237.354391629),Constant(-512.116113931),Constant(-237.3543916),Constant(512.116113865),Constant(-813.542880345),Constant(887.942379783),Constant(887.942379753),Constant(813.542880265),Constant(-13.6826884631),Constant(638.697970038),Constant(-386.535837846),Constant(113.961988218),Constant(-638.697970958),Constant(-13.6826879195),Constant(512.116113711),Constant(237.354391612),Constant(113.961988),Constant(386.535838129)]
