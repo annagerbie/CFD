@@ -12,6 +12,8 @@ from scipy import integrate
 from scipy import stats
 import time
 import sys
+import csv
+
 sys.getrecursionlimit()
 sys.setrecursionlimit(10000)
 
@@ -27,7 +29,7 @@ TRACE     = 13, // what's happening (in detail)
 DBG       = 10  // sundry
 
 '''
-test_git = 2
+air_density = 1.225 #kg/m^3
 # Print log messages only from the root process in parallel
 parameters["std_out_all_processes"] = False; ### Print log messages only from the root process in parallel
 parameters['form_compiler']['cpp_optimize_flags'] = '-O3 -fno-math-errno -march=native'        
@@ -70,6 +72,7 @@ restart = False ###seeded layout (must go into layout function to change seed)
 randStart = False ###random layout
 gridStart = True ###gridded layout - must have 16 turbines
 optimize = False ###
+linearStart = False ###turbines in a row
 
 if optimize == True:
     from dolfin_adjoint import *
@@ -120,6 +123,8 @@ def createLayout(numturbs):
             cols = 4
             xpos = np.linspace(-initExtent*(site_x - radius),initExtent*(site_x - radius),cols)
             ypos = np.linspace(-initExtent*(site_y - radius),initExtent*(site_y - radius),rows)
+            #print('xlocations')
+            #print(xpos)
             for i in range(rows):
                 for j in range(cols):
                     mx.append(Constant(xpos[j]))
@@ -128,6 +133,16 @@ def createLayout(numturbs):
                     # mx.append(Constant(xpos[j]+5.*np.random.randn()))
                     # my.append(Constant(ypos[i]+5.*np.random.randn()))
                     mz.append(Constant(HH))
+                    
+    
+    elif linearStart == True:
+        '''My adds'''
+        mx = np.linspace(-initExtent*(site_x - radius),initExtent*(site_x - radius),numturbs)
+        my = np.array([0] * numturbs)
+        mz = np.array([HH] * numturbs)
+        
+    elif offgridStart == True:
+        pass
     elif restart == True:
         # fixed layout here
         m_temp = [Constant(-113.961988283),Constant(-386.535837904),Constant(-512.116113959),Constant(-237.354391531),Constant(638.697968355),Constant(13.6826901448),Constant(386.535838424),Constant(-113.961987466),Constant(13.6826875361),Constant(-638.697971072),Constant(-887.942379804),Constant(-813.542880381),Constant(813.542880031),Constant(-887.942379852),Constant(237.354391629),Constant(-512.116113931),Constant(-237.3543916),Constant(512.116113865),Constant(-813.542880345),Constant(887.942379783),Constant(887.942379753),Constant(813.542880265),Constant(-13.6826884631),Constant(638.697970038),Constant(-386.535837846),Constant(113.961988218),Constant(-638.697970958),Constant(-13.6826879195),Constant(512.116113711),Constant(237.354391612),Constant(113.961988),Constant(386.535838129)]
@@ -153,11 +168,13 @@ def createRotatedTurbineForce(mx,my,ma,A,beta,numturbs,alpha,V):
         yrot = sin(alpha)*mx[i] + cos(alpha)*my[i]
 
         ### force imported on the flow by each wind turbine = 0.5 * rho * An*c't*smoothing kernal / beta - no multiplication by magnitude because we assume turbine is turned into wind
+        ### why no windspeed included? why no rho included?
         tf = tf + 0.5*4.*A*ma[i]/(1.-ma[i])/beta*exp(-(((x[0] - xrot)/thickness)**WTGexp + ((x[1] - yrot)/radius)**WTGexp))*WTGbase.copy(deepcopy=True)
 
     return tf
 
 def rotatedPowerFunctional(alpha,A,beta,mx,my,ma,u,numturbs,V):
+    ### used only in optimization
     # functional for dolfin-adjoint
     x=SpatialCoordinate(mesh)
     J=Functional(0.)
@@ -171,6 +188,7 @@ def rotatedPowerFunctional(alpha,A,beta,mx,my,ma,u,numturbs,V):
     return J
 
 def rotatedPowerFunction(alpha,A,beta,mx,my,ma,up,numturbs,V):
+    ### used in developing final power
     #emulating an actual power curve
     x=SpatialCoordinate(mesh)
 
@@ -180,8 +198,11 @@ def rotatedPowerFunction(alpha,A,beta,mx,my,ma,up,numturbs,V):
         yrot = sin(alpha)*mx[i] + cos(alpha)*my[i]
 
         if i ==0:
-            J = 0.5*np.pi*radius**2*4*float(ma[i])*(1.-float(ma[i]))**2*up.sub(0)(xrot,yrot)[0]**3
+            print(up.sub(0)(xrot,yrot)[0])
+            J = 0.5*np.pi*radius**2*4*float(ma[i])*(1.-float(ma[i]))**2*up.sub(0)(xrot,yrot)[0]**3 
+            ### up.sub(0)(xrot,yrot)[0] --> up == u and p combined --> sub(0) == just u --> (xrot, yrot) == position of interest (center pt) --> [0] == x-velocity
         else:
+            print(up.sub(0)(xrot,yrot)[0])
             J = J + 0.5*np.pi*radius**2*4*float(ma[i])*(1.-float(ma[i]))**2*up.sub(0)(xrot,yrot)[0]**3
 
     return J
@@ -230,12 +251,12 @@ def splitSolution(m_opt,numturbs):
     return mx_opt,my_opt
 
 def main(tf):
-    nu = Constant(.00005) ### coefficient of friction? eddie viscosity
+    nu = Constant(.00005) ### kinematic viscosity
     f = Constant((0.,0.))
-    up_next = Function(VQ) ### up_next becomes tuple of x, y coordinates?
-    u_next,p_next = split(up_next) ### split x and y coordinates
+    up_next = Function(VQ) ### up_next becomes tuple of vector and finite elements?
+    u_next,p_next = split(up_next) ### split vector (wind speed) and finite (pressure) elements?
     v,q = TestFunctions(VQ)
-    class InitialConditions(Expression):
+    class InitialConditions(Expression): ###inherits from Expression class in fenics
         def __init__(self,**kwargs):
             random.seed(2) ### WHY IS THIS HERE?
         def eval(self, values, x):
@@ -246,10 +267,10 @@ def main(tf):
             return (3,)  
     #boundary conditions
     class NoSlipBoundary(SubDomain):
-        def inside(self, x, on_boundary):
+        def inside(self, x, on_boundary): ### windspeed has w = 0 at top and bottom
             return near(x[1]**2 - (Ly/2.)**2, 0.) and on_boundary
 
-    class InflowBoundary(SubDomain):
+    class InflowBoundary(SubDomain): ### windspeeed has u = inflow velocity and w = 0 at locations of inflow
         def inside(self, x, on_boundary):
             return near(x[0],-(Lx/2.)) and on_boundary
 
@@ -334,14 +355,14 @@ if __name__ == "__main__":
     '''create layout after previous specification of random, gridded, or seeded'''
     mx,my,mz = createLayout(numturbs)
     ### array of 0.33?? Why?
-    ma=[Constant(mm) for mm in 0.33*np.ones(numturbs)]
+    ma=[Constant(mm) for mm in 0.33*np.ones(numturbs)] ###axial induction factor
     ### calculate the double integral of the smoothing kernel for 
     beta = integrate.dblquad(WTGdist,-3*radius,3*radius,lambda x: -3*radius,lambda x: 3*radius)
 
     B=beta[0] ### B=estimate of integral, without estimate of error
 
     if optimize == True: 
-
+        print('optimizing - line 345')
         # power functional
         J = Functional(0.) ### what is this??? - data structure type
         for i in range(bins): ###for each wind direction
@@ -380,7 +401,8 @@ if __name__ == "__main__":
     file1 << tf_rot_opt_out
 
     u_rot_opt,up_rot_opt  = main(tf_rot_opt) ### RANS analysis
-
+    #print('mx: ',mx)
+    #print('my: ',my)
     for i in range(bins):
         
         # report power curve scalar function instead of functional for adjoint derivatives
@@ -389,7 +411,14 @@ if __name__ == "__main__":
         else:
             Jfunc = Jfunc + weights[i]*rotatedPowerFunction(dirs[i],A,B,mx_opt,my_opt,ma,up_rot_opt,numturbs,V)
     # power = assemble(Jfunc)
+    print('power output: ')
     print(Jfunc)
+    data = [Jfunc]
+    with open('CFD_output.csv', "a+") as csv_file:
+        writer = csv.writer(csv_file, delimiter=',')
+        for line in data:
+            writer.writerow(line)
+
     u_rot_opt_out=project(u_rot_opt, V)
 
     uStr='u.pvd'
