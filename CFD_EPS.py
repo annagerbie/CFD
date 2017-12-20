@@ -10,15 +10,15 @@ import numpy as np
 import random as random
 from scipy import integrate
 from scipy import stats
-import time
+from time import time
 import sys
-import csv
-from math import sqrt
+#import csv
+import matplotlib.pyplot as plt
 
 sys.getrecursionlimit()
 sys.setrecursionlimit(10000)
 
-set_log_level(INFO) ###edits what gets printed out
+set_log_level(WARNING) ###edits what gets printed out
 # mpirun -np 4 python windse4dir.py 2>&1 | tee log
 '''
 CRITICAL  = 50, // errors that may lead to data corruption and suchlike
@@ -31,7 +31,8 @@ DBG       = 10  // sundry
 
 '''
 air_density = 1.225 #kg/m^3
-init_step = 400. #initial step size
+#init_step = 400. #initial step size
+init_step = 200. #changed for testing
 minstep = 3. #minimum step size
 num_pops = 5
 max_pop_tries = 1000
@@ -58,7 +59,7 @@ numturbs = 16
 
 inflowVel=8 ### ambient wind speed?
 #number of inflow direction bins
-bins = 1 ### Unidirectional wind
+bins = 3 ### Unidirectional wind
 WTGexp = 8. ### gamma for smoothing kernel (Eq. 12)
 radius = RD/2.
 thickness = RD/20.
@@ -76,11 +77,12 @@ site_y = 15.*RD ###size of farm
 restart = False ###seeded layout (must go into layout function to change seed)
 randStart = False ###random layout
 gridStart = True ###gridded layout - must have 16 turbines
-optimize = False ###
+optimize = True ###
 linearStart = False ###turbines in a row
 
-if optimize == True:
-    from dolfin_adjoint import *
+'''only for adjoint method'''
+#if optimize == True:
+#    from dolfin_adjoint import *
 
 
 # inflow is always from left in simulation
@@ -115,11 +117,14 @@ def createLayout(numturbs):
     if randStart == True:
         for i in range(numturbs):
             ### select a random x location, within the farm bounds, and such that the entire rotor will be within the farm bounds
-            mx.append(Constant(np.random.uniform(low=-(site_x - radius),high=(site_x - radius))))
+            #mx.append(Constant(np.random.uniform(low=-(site_x - radius),high=(site_x - radius))))
+            mx.append(np.random.uniform(low=-(site_x - radius),high=(site_x - radius)))
             ### select a random y location, within the farm bounds, and such that the entire rotor will be within the farm bounds
-            my.append(Constant(np.random.uniform(low=-(site_y - radius), high=(site_y - radius))))
+            #my.append(Constant(np.random.uniform(low=-(site_y - radius), high=(site_y - radius))))
+            my.append(np.random.uniform(low=-(site_y - radius), high=(site_y - radius)))
             ### single hub height, z = HH
-            mz.append(Constant(HH))
+            #mz.append(Constant(HH))
+            mz.append(HH)
     elif gridStart == True:
         ###if you've specified a grided starting array 
         ###Can only accept 16 turbines
@@ -132,14 +137,16 @@ def createLayout(numturbs):
             #print(xpos)
             for i in range(rows):
                 for j in range(cols):
-                    mx.append(Constant(xpos[j]))
-                    my.append(Constant(ypos[i]))
+                    #mx.append(Constant(xpos[j]))
+                    #my.append(Constant(ypos[i]))
+                    mx.append(xpos[j])
+                    my.append(ypos[i])
                     # # some starting noise sometimes helps
                     # mx.append(Constant(xpos[j]+5.*np.random.randn()))
                     # my.append(Constant(ypos[i]+5.*np.random.randn()))
-                    mz.append(Constant(HH))
+                    #mz.append(Constant(HH))
+                    mz.append(HH)
                     
-    
     elif linearStart == True:
         '''My adds'''
         mx = np.linspace(-initExtent*(site_x - radius),initExtent*(site_x - radius),numturbs)
@@ -201,7 +208,7 @@ def rotatedPowerFunction(alpha,A,beta,mx,my,ma,up,numturbs,V):
         #rotation
         xrot = cos(alpha)*mx[i] - sin(alpha)*my[i] ### -5 added by Annalise 12/14 to understand effects of smoothing kernal on usturbine
         yrot = sin(alpha)*mx[i] + cos(alpha)*my[i]
-        print(up.sub(0)(xrot,yrot)[0])
+        #print(up.sub(0)(xrot,yrot)[0])
         #J = 0.5*np.pi*radius**2*4*float(ma[i])*(1.-float(ma[i]))**2*up.sub(0)(xrot,yrot)[0]**3 
         J.append(0.5*air_density*np.pi*radius**2*4*float(ma[i])/(1.-float(ma[i]))*up.sub(0)(xrot,yrot)[0]**3)
         ### up.sub(0)(xrot,yrot)[0] --> up == u and p combined --> sub(0) == just u --> (xrot, yrot) == position of interest (center pt) --> [0] == x-velocity
@@ -328,15 +335,18 @@ def main(tf):
     return u_next, up_next
 ###############################################################################
 def Eval_Objective(mx,my,ma,A,B,numturb):
+    start = time()
     J = 0.
     cumulative_power = [0.] * numturbs
     for i in range(bins): ###for each wind direction
         tf_rot= createRotatedTurbineForce(mx,my,ma,A,B,numturbs,dirs[i],V) ### calculate force imparted by turbines
         u_rot, up_rot = main(tf_rot)  ### RANS solver
         power_dev = rotatedPowerFunction(alpha,A,beta,mx,my,ma,up_rot,numturbs,V)
-        J = J + weights[i]*sum(power_dev)
+        J = J - weights[i]*sum(power_dev)
         cumulative_power = [i+j for i,j in zip(power_dev,cumulative_power)]
-    
+        print('time to evaluate bin: ', time() - start)
+        start = time()
+    print('new evaluation: ',J)
     return J, cumulative_power
 #######################################################################################################################
 def Rand_Vector(numturbs):
@@ -355,8 +365,8 @@ def Rand_Vector(numturbs):
 def Translation_X(step_size, i, mx):
     transflag = 0
     #print(xstart, step_size)
-    xfinish = mx[i] + step_size            #find preliminary new x-location given step size
-    if xfinish >= 0 and xfinish <= site_x:    #if this new x-location is not out of bounds, translate it
+    xfinish = mx[i] + step_size           #find preliminary new x-location given step size
+    if xfinish >= -site_x and xfinish <= site_x:    #if this new x-location is not out of bounds, translate it
         mx[i] = xfinish
         return mx, transflag
     else:
@@ -365,9 +375,9 @@ def Translation_X(step_size, i, mx):
 ################################################################################################################        
 def Translation_Y(step_size, i, my):
     transflag = 0
-    yfinish = my[i] + step_size            #find preliminary new x-location given step size
-    if yfinish >= 0 and yfinish <= site_y:    #if this new x-location is not out of bounds, translate it
-        my[i] = yfinish   
+    yfinish = my[i] + step_size          #find preliminary new x-location given step size
+    if yfinish >= -site_y and yfinish <= site_y:    #if this new x-location is not out of bounds, translate it
+        my[i] = yfinish  
         return my, transflag
     else:
         transflag = 1
@@ -390,23 +400,151 @@ def Check_Interference(mx, my, n):
 ###############################################################################
 def EPS(mx, my, mz, ma):
     Stopped = [0.] * numturbs
+    #print('type mx: ',type(mx))
+    #print('type my: ',type(my))
+    objective, turb_power = Eval_Objective(mx,my,ma,A,B,numturbs)
+    #objective = nomove * 1.
     for h in range(0, 1):
         step2 = init_step
         while step2 >= minstep:
             random_vec = Rand_Vector(numturbs)    #creates a randomly ordered vector of turbines
             for j in range(0, len(random_vec)):
                 i = random_vec[j]
+                #print('type(mx[i]): ',type(mx[i]))
+                #print('mx[i]: ',mx[i])
                 Stopped[i] == 0
                 print('Turbine ', i,' is being tested.')
                 flag = 0
                 innerflag = 0
                 transflag = 0
-                nomove, turb_power = Eval_Objective(mx,my,ma,A,B,numturbs)
+                #nomove, turb_power = Eval_Objective(mx,my,ma,A,B,numturbs)
                 #develop preliminary objective for comparison purposes                
-                print('stepped into while loop')
-                if my[i] >= 0.:
+                #if my[i] >= 0.: #If commented out, Don't adjust pattern order based on position in field
+                if innerflag == 0 and flag == 0:        #move 1 was just unsucessfully attempted
+                    #print('initial my: ', my)
+                    my, transflag = Translation_Y(step2, i, my)
+                    #print('new my: ', my)
+                    CHECK2 = 0
+                    if transflag == 1:      #if the translation moved the turbine out of bounds, go to next translation
+                        innerflag = 1       #move2 was attempted
+                        print('turbine not moved up. Outside bounds')
+                    else:
+                        CHECK2 = Check_Interference(mx, my, i)
+                        if CHECK2 == 1:         #if interference occurs, move the turbine back, go to next translation
+                            my, transflag = Translation_Y(-step2, i, my)
+                            innerflag = 1
+                            print('turbine not moved up. Interference')
+                        else:       #if there is no interference, evaluate and store
+                            move2, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
+
+                            if move2 >= objective:       #if evaluation is worse than initial, move back, go to next translation
+                                my, transflag = Translation_Y(-step2, i, my)
+                                innerflag = 1
+                                print('turbine not moved up. Worse Evaluation')
+                            else:       #evaluation is better, keep move, go to next turbine
+                                flag = 1
+                                turb_power = [w for w in turb_power2]
+                                objective = move2 * 1.
+                                print('turbine ', i, ' moved up.', move2)
+                                print(my)
+                                print_graph(mx,my,i)
+                                #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
+                            
+                if innerflag == 1 and flag == 0:        #move 2 was just unsucessfully attempted
+                    mx, transflag = Translation_X(-step2, i, mx)
+                    CHECK2 = 0
+                    if transflag == 1:      #if the translation moved the turbine out of bounds, go to next translation
+                        innerflag = 2       #move3 was attempted
+                        print('turbine not left. Outside Bounds')
+                    else:
+                        CHECK2 = Check_Interference(mx, my, i)
+                        if CHECK2 == 1:         #if interference occurs, move the turbine back, go to next translation
+                            mx, transflag = Translation_X(step2, i, mx)
+                            innerflag = 2
+                            print('turbine not left. Interference')
+                        else:       #if there is no interference, evaluate and store
+                            move3, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
+
+                            if move3 >= objective:       #if evaluation is worse than initial, move back, go to next translation
+                                mx, transflag = Translation_X(step2, i, mx)
+                                innerflag = 2
+                                print('turbine not moved left. Worse Eval')
+                            else:       #evaluation is better, keep move, go to next turbine
+                                flag = 1
+                                turb_power = [w for w in turb_power2]
+                                objective = move3 * 1.
+                                print('turbine ', i, ' moved left.', move3)
+                                print(mx)
+                                print_graph(mx,my,i)
+                                #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
+                            
+                if innerflag == 2 and flag == 0:        #move 3 was just unsucessfully attempted
+                    my, transflag = Translation_Y(-step2, i, my)
+                    CHECK2 = 0
+                    if transflag == 1:      #if the translation moved the turbine out of bounds, go to next translation
+                        innerflag = 3       #move3 was attempted
+                        print('turbine not moved down. Outside Bounds')
+                    else:
+                        CHECK2 = Check_Interference(mx, my, i)
+                        if CHECK2 == 1:         #if interference occurs, move the turbine back, go to next translation
+                            my, transflag = Translation_Y(step2, i, my)
+                            innerflag = 3
+                            print('turbine not moved down. Interference')
+                        else:       #if there is no interference, evaluate and store
+                            move4, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
+
+                            if move4 >= objective:       #if evaluation is worse than initial, move back, go to next translation
+                                my, transflag = Translation_Y(step2, i, my)
+                                innerflag = 3
+                                print('turbine not moved down. Worse Evaluation')
+                            else:       #evaluation is better, keep move, go to next turbine
+                                flag = 1
+                                turb_power = [w for w in turb_power2]
+                                objective = move4 * 1.
+                                print('turbine ', i, ' moved down.', move4)
+                                print(my)
+                                print_graph(mx,my,i)
+                                #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
+                if innerflag == 3 and flag == 0:
+                    mx, transflag = Translation_X(step2, i, mx)     #move the turbine one step right
+                    CHECK2 = 0
+                    if transflag == 1:          #if the translation moved the turbine out of bounds, go to next translation
+                        innerflag = 4           #signifies move 1 was attempted
+                        print('Turbine not moved right. Outside Bounds')
+                
+                    else:       #if there is the turbine is in bounds, evaluate and store
+                        CHECK2 = Check_Interference(mx, my, i)
+                        if CHECK2 == 1:         #if interference occurs, move the turbine back , go to next translation
+                            mx, transflag = Translation_X(-step2, i, mx)
+                            innerflag = 4
+                            print('turbine not moved right. Interference')
+                        else:       #if there is no interference, evaluate and store
+                            move1, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
+
+                            if move1 >= objective:             #if evaluation is worse than initial, move back, go to next translation
+                                mx, transflag = Translation_X(-step2, i, mx)
+                                innerflag = 4
+                                print('Turbine not moved right. Worse Evaluation')
+                            else:
+                                flag = 1           #signifies movement was kept
+                                turb_power = [w for w in turb_power2]
+                                objective = move1 * 1.
+                            print('turbine ', i, ' moved right.', move1)
+                            print(mx)
+                            print_graph(mx,my,i)
+                            #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
+            
+                if innerflag == 4 and flag == 0:        #translation at this step size has resulted in no moves for this turbine
+                    Stopped[i] = 1
+                    #objective = nomove * 1.
+                    #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
+                                
+                '''      
+                #Don't adjust pattern order based on position of field
+                elif my[i] < 0.:
+                    
                     if innerflag == 0 and flag == 0:        #move 1 was just unsucessfully attempted
-                        transflag = Translation_Y(step2, i, my)
+                        my, transflag = Translation_Y(-step2, i, my)
                         CHECK2 = 0
                         if transflag == 1:      #if the translation moved the turbine out of bounds, go to next translation
                             innerflag = 1       #move2 was attempted
@@ -414,209 +552,97 @@ def EPS(mx, my, mz, ma):
                         else:
                             CHECK2 = Check_Interference(mx, my, i)
                             if CHECK2 == 1:         #if interference occurs, move the turbine back, go to next translation
-                                Translation_Y(-step2, i, my)
+                                my, transflag = Translation_Y(step2, i, my)
                                 innerflag = 1
                                 print('turbine not moved up.')
                             else:       #if there is no interference, evaluate and store
                                 move2, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
 
-                                if move2 >= nomove:       #if evaluation is worse than initial, move back, go to next translation
-                                    Translation_Y(-step2, i, my)
+                                if move2 >= objective:       #if evaluation is worse than initial, move back, go to next translation
+                                    my, transflag = Translation_Y(step2, i, my)
                                     innerflag = 1
                                     print('turbine not moved up.')
                                 else:       #evaluation is better, keep move, go to next turbine
                                     flag = 1
-                                    turb_power = [i for i in turb_power2]
+                                    turb_power = [w for w in turb_power2]
                                     objective = move2 * 1.
                                     print('turbine ', i, ' moved up.', move2)
                                     #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
                                 
                     if innerflag == 1 and flag == 0:        #move 2 was just unsucessfully attempted
-                        transflag = Translation_X(-step2, i, mx)
+                        mx, transflag = Translation_X(-step2, i, mx)
                         CHECK2 = 0
                         if transflag == 1:      #if the translation moved the turbine out of bounds, go to next translation
                             innerflag = 2       #move3 was attempted
                             print('turbine not left.')
                         else:
-                            CHECK2 = Check_Interference(i)
+                            CHECK2 = Check_Interference(mx, my, i)
                             if CHECK2 == 1:         #if interference occurs, move the turbine back, go to next translation
-                                Translation_X(step2, i, mx)
+                                mx, transflag = Translation_X(step2, i, mx)
                                 innerflag = 2
                                 print('turbine not left.')
                             else:       #if there is no interference, evaluate and store
                                 move3, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
 
-                                if move3 >= nomove:       #if evaluation is worse than initial, move back, go to next translation
-                                    Translation_X(step2, i, mx)
+                                if move3 >= objective:       #if evaluation is worse than initial, move back, go to next translation
+                                    mx, transflag = Translation_X(step2, i, mx)
                                     innerflag = 2
                                     print('turbine not moved left.')
                                 else:       #evaluation is better, keep move, go to next turbine
                                     flag = 1
-                                    turb_power = [i for i in turb_power2]
+                                    turb_power = [w for w in turb_power2]
                                     objective = move3 * 1.
                                     print('turbine ', i, ' moved left.', move3)
                                     #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
                                 
                     if innerflag == 2 and flag == 0:        #move 3 was just unsucessfully attempted
-                        transflag = Translation_Y(-step2, i, my)
+                        my, transflag = Translation_Y(step2, i, my)
                         CHECK2 = 0
                         if transflag == 1:      #if the translation moved the turbine out of bounds, go to next translation
                             innerflag = 3       #move3 was attempted
                             print('turbine not moved down.')
                         else:
-                            CHECK2 = Check_Interference(i)
+                            CHECK2 = Check_Interference(mx, my, i)
                             if CHECK2 == 1:         #if interference occurs, move the turbine back, go to next translation
-                                Translation_Y(step2, i, my)
+                                my, transflag = Translation_Y(-step2, i, my)
                                 innerflag = 3
                                 print('turbine not moved down.')
                             else:       #if there is no interference, evaluate and store
                                 move4, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
 
-                                if move4 >= nomove:       #if evaluation is worse than initial, move back, go to next translation
-                                    Translation_Y(step2, i, my)
+                                if move4 >= objective:       #if evaluation is worse than initial, move back, go to next translation
+                                    my, transflag = Translation_Y(-step2, i, my)
                                     innerflag = 3
                                     print('turbine not moved down.')
                                 else:       #evaluation is better, keep move, go to next turbine
                                     flag = 1
-                                    turb_power = [i for i in turb_power2]
+                                    turb_power = [w for w in turb_power2]
                                     objective = move4 * 1.
                                     print('turbine ', i, ' moved down.', move4)
                                     #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
                     if innerflag == 3 and flag == 0:
-                        transflag = Translation_X(step2, i, mx)     #move the turbine one step right
+                        mx, transflag = Translation_X(step2, i, mx)     #move the turbine one step right
                         CHECK2 = 0
                         if transflag == 1:          #if the translation moved the turbine out of bounds, go to next translation
                             innerflag = 4           #signifies move 1 was attempted
                             print('Turbine not moved right.')
                     
                         else:       #if there is the turbine is in bounds, evaluate and store
-                            CHECK2 = Check_Interference(i)
+                            CHECK2 = Check_Interference(mx, my, i)
                             if CHECK2 == 1:         #if interference occurs, move the turbine back , go to next translation
-                                Translation_X(-step2, i, mx)
+                                mx, transflag = Translation_X(-step2, i, mx)
                                 innerflag = 4
                                 print('turbine not moved right')
                             else:       #if there is no interference, evaluate and store
                                 move1, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
 
-                                if move1 >= nomove:             #if evaluation is worse than initial, move back, go to next translation
-                                    Translation_X(-step2, i, mx)
+                                if move1 >= objective:             #if evaluation is worse than initial, move back, go to next translation
+                                    mx, transflag = Translation_X(-step2, i, mx)
                                     innerflag = 4
                                     print('Turbine not moved right.')
                                 else:
                                     flag = 1           #signifies movement was kept
-                                    turb_power = [i for i in turb_power2]
-                                    objective = move1 * 1.
-                                print('turbine ', i, ' moved right.', move1)
-                                #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
-                
-                    if innerflag == 4 and flag == 0:        #translation at this step size has resulted in no moves for this turbine
-                        Stopped[i] = 1
-                        objective = nomove * 1.
-                        #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
-                                
-                                
-                elif my[i] < 0.:
-                    
-                    if innerflag == 0 and flag == 0:        #move 1 was just unsucessfully attempted
-                        transflag = Translation_Y(-step2, i, my)
-                        CHECK2 = 0
-                        if transflag == 1:      #if the translation moved the turbine out of bounds, go to next translation
-                            innerflag = 1       #move2 was attempted
-                            print('turbine not moved up.')
-                        else:
-                            CHECK2 = Check_Interference(i)
-                            if CHECK2 == 1:         #if interference occurs, move the turbine back, go to next translation
-                                Translation_Y(step2, i, my)
-                                innerflag = 1
-                                print('turbine not moved up.')
-                            else:       #if there is no interference, evaluate and store
-                                move2, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
-
-                                if move2 >= nomove:       #if evaluation is worse than initial, move back, go to next translation
-                                    Translation_Y(step2, i, my)
-                                    innerflag = 1
-                                    print('turbine not moved up.')
-                                else:       #evaluation is better, keep move, go to next turbine
-                                    flag = 1
-                                    turb_power = [i for i in turb_power2]
-                                    objective = move2 * 1.
-                                    print('turbine ', i, ' moved up.', move2)
-                                    #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
-                                
-                    if innerflag == 1 and flag == 0:        #move 2 was just unsucessfully attempted
-                        transflag = Translation_X(-step2, i, mx)
-                        CHECK2 = 0
-                        if transflag == 1:      #if the translation moved the turbine out of bounds, go to next translation
-                            innerflag = 2       #move3 was attempted
-                            print('turbine not left.')
-                        else:
-                            CHECK2 = Check_Interference(i)
-                            if CHECK2 == 1:         #if interference occurs, move the turbine back, go to next translation
-                                Translation_X(step2, i, mx)
-                                innerflag = 2
-                                print('turbine not left.')
-                            else:       #if there is no interference, evaluate and store
-                                move3, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
-
-                                if move3 >= nomove:       #if evaluation is worse than initial, move back, go to next translation
-                                    Translation_X(step2, i, mx)
-                                    innerflag = 2
-                                    print('turbine not moved left.')
-                                else:       #evaluation is better, keep move, go to next turbine
-                                    flag = 1
-                                    turb_power = [i for i in turb_power2]
-                                    objective = move3 * 1.
-                                    print('turbine ', i, ' moved left.', move3)
-                                    #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
-                                
-                    if innerflag == 2 and flag == 0:        #move 3 was just unsucessfully attempted
-                        transflag = Translation_Y(step2, i, my)
-                        CHECK2 = 0
-                        if transflag == 1:      #if the translation moved the turbine out of bounds, go to next translation
-                            innerflag = 3       #move3 was attempted
-                            print('turbine not moved down.')
-                        else:
-                            CHECK2 = Check_Interference(i)
-                            if CHECK2 == 1:         #if interference occurs, move the turbine back, go to next translation
-                                Translation_Y(-step2, i, my)
-                                innerflag = 3
-                                print('turbine not moved down.')
-                            else:       #if there is no interference, evaluate and store
-                                move4, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
-
-                                if move4 >= nomove:       #if evaluation is worse than initial, move back, go to next translation
-                                    Translation_Y(-step2, i, my)
-                                    innerflag = 3
-                                    print('turbine not moved down.')
-                                else:       #evaluation is better, keep move, go to next turbine
-                                    flag = 1
-                                    turb_power = [i for i in turb_power2]
-                                    objective = move4 * 1.
-                                    print('turbine ', i, ' moved down.', move4)
-                                    #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
-                    if innerflag == 3 and flag == 0:
-                        transflag = Translation_X(step2, i, mx)     #move the turbine one step right
-                        CHECK2 = 0
-                        if transflag == 1:          #if the translation moved the turbine out of bounds, go to next translation
-                            innerflag = 4           #signifies move 1 was attempted
-                            print('Turbine not moved right.')
-                    
-                        else:       #if there is the turbine is in bounds, evaluate and store
-                            CHECK2 = Check_Interference(i)
-                            if CHECK2 == 1:         #if interference occurs, move the turbine back , go to next translation
-                                Translation_X(-step2, i, mx)
-                                innerflag = 4
-                                print('turbine not moved right')
-                            else:       #if there is no interference, evaluate and store
-                                move1, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
-
-                                if move1 >= nomove:             #if evaluation is worse than initial, move back, go to next translation
-                                    Translation_X(-step2, i, mx)
-                                    innerflag = 4
-                                    print('Turbine not moved right.')
-                                else:
-                                    flag = 1           #signifies movement was kept
-                                    turb_power = [i for i in turb_power2]
+                                    turb_power = [w for w in turb_power2]
                                     objective = move1 * 1.
                                 print('turbine ', i, ' moved right.', move1)
                                 #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
@@ -624,13 +650,14 @@ def EPS(mx, my, mz, ma):
                      
                     if innerflag == 4 and flag == 0:        #translation at this step size has resulted in no moves for this turbine
                         Stopped[i] = 1
-                        objective = nomove * 1.
+                        #objective = nomove * 1.
                         #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
                     
                         #for every turbine in random order
                 
                         #check to see if all turbies have not been moved at this step
                         #print_graph()
+                '''
             exit_css = sum(Stopped)        #exit current step size
             if exit_css == numturbs:
                 #all turbines have stopped moving at this step size, halving step size.
@@ -660,7 +687,7 @@ def EPS(mx, my, mz, ma):
                             mx[min_turb] = random.uniform(0, site_x)
                             my[min_turb] = random.uniform(0, site_y)
                                 
-                            CHECK2 = Check_Interference(min_turb)
+                            CHECK2 = Check_Interference(mx, my, min_turb)
                             if CHECK2 != 1:         #No interference
                                 checkx = 1          #place turbine and exit poping loop
                                 print('Turbine ', min_turb, ' has moved to a new location.')
@@ -672,9 +699,11 @@ def EPS(mx, my, mz, ma):
                         new_eval, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
                         if new_eval < objective:
                             flag = 1
-                            turb_power = [i for i in turb_power2]
+                            turb_power = [w for w in turb_power2]
+                            objective = new_eval * 1.
                             #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
                             print('Move has improved the evaluation. Continuing pattern serach.')
+                            print_graph(mx,my,min_turb)
                         else:
                             mx[min_turb] = initialx
                             my[min_turb] = initialy
@@ -689,6 +718,17 @@ def EPS(mx, my, mz, ma):
             #else:
                 #print('Turbines were not all placed at step size ', step2, '. Repeating.')
     return mx, my, mz
+###########################################################################################
+def print_graph(all_x,all_y,i):   
+    fig = plt.figure()
+    ax1 = fig.add_subplot(111)
+    ax1.scatter(all_x, all_y, s=30, c='k', marker=(3,2))
+    ax1.scatter(all_x[i], all_y[i], s=30, c='r', marker=(3,2))
+
+    plt.ylabel('Position (m)')
+    plt.xlabel('Position (m)')
+    plt.title(str('Optimization of ' + str(numturbs) + ' Turbines'))
+    plt.savefig(str('step_turb_' + str(i) + '.png'), bbox_inches='tight')
 ###############################################################################
 '''things done each time code runs'''
 #which inflow angle to plot
@@ -728,7 +768,7 @@ if __name__ == "__main__":
     B=beta[0] ### B=estimate of integral, without estimate of error
 
     if optimize == True: 
-        print('optimizing - line 345')
+        print('optimizing - line 751')
         mx_opt,my_opt,mz_opt = EPS(mx, my, mz, ma)
         '''
         # power functional
