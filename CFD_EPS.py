@@ -14,6 +14,7 @@ from time import time
 import sys
 #import csv
 import matplotlib.pyplot as plt
+import os
 
 sys.getrecursionlimit()
 sys.setrecursionlimit(10000)
@@ -59,7 +60,7 @@ numturbs = 16
 
 inflowVel=8 ### ambient wind speed?
 #number of inflow direction bins
-bins = 3 ### Unidirectional wind
+bins = 1 ### Unidirectional wind
 WTGexp = 8. ### gamma for smoothing kernel (Eq. 12)
 radius = RD/2.
 thickness = RD/20.
@@ -77,16 +78,17 @@ site_y = 15.*RD ###size of farm
 restart = False ###seeded layout (must go into layout function to change seed)
 randStart = False ###random layout
 gridStart = True ###gridded layout - must have 16 turbines
-optimize = True ###
+optimize = False ###
 linearStart = False ###turbines in a row
-
+offgridStart = False
 '''only for adjoint method'''
 #if optimize == True:
 #    from dolfin_adjoint import *
 
 
 # inflow is always from left in simulation
-dirs = np.linspace(pi/2., 2*pi+pi/2., bins, endpoint = False)
+#dirs = np.linspace(pi/2., 2*pi+pi/2., bins, endpoint = False)
+dirs = np.linspace(0, 2*pi, bins, endpoint = False)
 weights = np.ones(bins)/bins ### assume even weightings
 
 
@@ -133,8 +135,6 @@ def createLayout(numturbs):
             cols = 4
             xpos = np.linspace(-initExtent*(site_x - radius),initExtent*(site_x - radius),cols)
             ypos = np.linspace(-initExtent*(site_y - radius),initExtent*(site_y - radius),rows)
-            #print('xlocations')
-            #print(xpos)
             for i in range(rows):
                 for j in range(cols):
                     #mx.append(Constant(xpos[j]))
@@ -154,7 +154,25 @@ def createLayout(numturbs):
         mz = np.array([HH] * numturbs)
         
     elif offgridStart == True:
-        pass
+        rows = 4
+        cols = 4
+        xpos = np.linspace(-initExtent*(site_x - radius),initExtent*(site_x - radius),cols)
+        ypos = np.linspace(-initExtent*(site_y - radius),initExtent*(site_y - radius),rows)
+        offset = ypos[1] - ypos[0]
+        xpos2 = []
+        for i in ypos:
+            xpos2.append(i + offset/2)
+        #print('xlocations')
+        #print(xpos)
+        for i in range(rows):
+            for j in range(cols):
+                if i % 2 == 0:
+                    mx.append(xpos[j])
+                else:
+                    mx.append(xpos2[j])
+                my.append(ypos[i])
+                mz.append(HH)
+
     elif restart == True:
         # fixed layout here
         m_temp = [Constant(-113.961988283),Constant(-386.535837904),Constant(-512.116113959),Constant(-237.354391531),Constant(638.697968355),Constant(13.6826901448),Constant(386.535838424),Constant(-113.961987466),Constant(13.6826875361),Constant(-638.697971072),Constant(-887.942379804),Constant(-813.542880381),Constant(813.542880031),Constant(-887.942379852),Constant(237.354391629),Constant(-512.116113931),Constant(-237.3543916),Constant(512.116113865),Constant(-813.542880345),Constant(887.942379783),Constant(887.942379753),Constant(813.542880265),Constant(-13.6826884631),Constant(638.697970038),Constant(-386.535837846),Constant(113.961988218),Constant(-638.697970958),Constant(-13.6826879195),Constant(512.116113711),Constant(237.354391612),Constant(113.961988),Constant(386.535838129)]
@@ -173,16 +191,32 @@ def createRotatedTurbineForce(mx,my,ma,A,beta,numturbs,alpha,V):
     x=SpatialCoordinate(mesh)
     WTGbase = project(Expression(("1.0","0.0"),degree=2),V)
     tf = Function(V)
-
+    #print(tf)
+    if checkpts == True:
+        check_it = project(tf, V)
+        n = [check_it(cos(alpha)*mx[i] - sin(alpha)*my[i], sin(alpha)*mx[i] + cos(alpha)*my[i]) for i in range(numturbs)]
+        nx = [cos(alpha)*mx[i] - sin(alpha)*my[i] for i in range(numturbs)]
+        ny = [sin(alpha)*mx[i] + cos(alpha)*my[i] for i in range(numturbs)]
+        fig, ax = plt.subplots()
+        ax.scatter(nx, ny)
+        for i, txt in enumerate(n):
+            ax.annotate(txt, (nx[i],ny[i]))
+        plt.savefig('initial_tf.png', bbox_inches='tight')
     for i in range(numturbs):
         #rotation
         xrot = cos(alpha)*mx[i] - sin(alpha)*my[i]
         yrot = sin(alpha)*mx[i] + cos(alpha)*my[i]
-
         ### force imported on the flow by each wind turbine = 0.5 * rho * An*c't*smoothing kernal / beta - no multiplication by magnitude because we assume turbine is turned into wind
-        ### why no windspeed included? why no rho included?
+        ### why no windspeed included? why no rho included? - rho cancelled out, windspeed multiplied within main() function
         tf = tf + 0.5*4.*A*ma[i]/(1.-ma[i])/beta*exp(-(((x[0] - xrot)/thickness)**WTGexp + ((x[1] - yrot)/radius)**WTGexp))*WTGbase.copy(deepcopy=True)
-
+    if checkpts == True:  
+        check_it = project(tf, V)
+        n = [check_it(cos(alpha)*mx[i] - sin(alpha)*my[i], sin(alpha)*mx[i] + cos(alpha)*my[i]) for i in range(numturbs)]
+        fig, ax = plt.subplots()
+        ax.scatter(nx, ny)
+        for i, txt in enumerate(n):
+            ax.annotate(txt, (nx[i],ny[i]))
+        plt.savefig('final_tf.png', bbox_inches='tight')
     return tf
 
 def rotatedPowerFunctional(alpha,A,beta,mx,my,ma,u,numturbs,V):
@@ -204,12 +238,22 @@ def rotatedPowerFunction(alpha,A,beta,mx,my,ma,up,numturbs,V):
     #emulating an actual power curve
     x=SpatialCoordinate(mesh)
     J = []
+    if checkpts == True: 
+        nx = [cos(alpha)*mx[i] - sin(alpha)*my[i] for i in range(numturbs)]
+        ny = [sin(alpha)*mx[i] + cos(alpha)*my[i] for i in range(numturbs)]
+        fig, ax = plt.subplots()
+        ax.scatter(nx, ny)
+        n = [up.sub(0)(nx[i],ny[i])[0] for i in range(numturbs)]
+        for i, txt in enumerate(n):
+            ax.annotate(txt, (nx[i],ny[i]))
+        plt.savefig('windspeeds.png', bbox_inches='tight')
     for i in range(numturbs):
         #rotation
         xrot = cos(alpha)*mx[i] - sin(alpha)*my[i] ### -5 added by Annalise 12/14 to understand effects of smoothing kernal on usturbine
         yrot = sin(alpha)*mx[i] + cos(alpha)*my[i]
         #print(up.sub(0)(xrot,yrot)[0])
         #J = 0.5*np.pi*radius**2*4*float(ma[i])*(1.-float(ma[i]))**2*up.sub(0)(xrot,yrot)[0]**3 
+        print(up.sub(0)(xrot,yrot)[0])
         J.append(0.5*air_density*np.pi*radius**2*4*float(ma[i])/(1.-float(ma[i]))*up.sub(0)(xrot,yrot)[0]**3)
         ### up.sub(0)(xrot,yrot)[0] --> up == u and p combined --> sub(0) == just u --> (xrot, yrot) == position of interest (center pt) --> [0] == x-velocity
 
@@ -261,7 +305,7 @@ def splitSolution(m_opt,numturbs):
 def main(tf):
     nu = Constant(.00005) ### kinematic viscosity
     f = Constant((0.,0.))
-    up_next = Function(VQ) ### up_next becomes tuple of vector and finite elements?
+    up_next = Function(VQ) ### up_next becomes tuple of vector and finite elements for wind speed and pressure
     u_next,p_next = split(up_next) ### split vector (wind speed) and finite (pressure) elements?
     v,q = TestFunctions(VQ)
     class InitialConditions(Expression): ###inherits from Expression class in fenics
@@ -326,7 +370,7 @@ def main(tf):
 
     solve(F == 0, up_next, bc, solver_parameters={"newton_solver":{"absolute_tolerance": 1e-8}})
     u_next,p_next = split(up_next)
-
+    #print('u_next: ', up_next.sub(0)(-Lx/2 + 0.000005,-Ly/2 + 0.000005)[0])
     if optimize == False:
         nu_T_out=project(nu_T, Q)
         lStr= 'nu_t.pvd'
@@ -341,10 +385,11 @@ def Eval_Objective(mx,my,ma,A,B,numturb):
     for i in range(bins): ###for each wind direction
         tf_rot= createRotatedTurbineForce(mx,my,ma,A,B,numturbs,dirs[i],V) ### calculate force imparted by turbines
         u_rot, up_rot = main(tf_rot)  ### RANS solver
-        power_dev = rotatedPowerFunction(alpha,A,beta,mx,my,ma,up_rot,numturbs,V)
+        power_dev = rotatedPowerFunction(dirs[i],A,beta,mx,my,ma,up_rot,numturbs,V)
         J = J - weights[i]*sum(power_dev)
-        cumulative_power = [i+j for i,j in zip(power_dev,cumulative_power)]
+        cumulative_power = [k+j for k,j in zip(power_dev,cumulative_power)]
         print('time to evaluate bin: ', time() - start)
+        print('unweighted power from bin: ',sum(power_dev))
         start = time()
     print('new evaluation: ',J)
     return J, cumulative_power
@@ -402,6 +447,10 @@ def EPS(mx, my, mz, ma):
     Stopped = [0.] * numturbs
     #print('type mx: ',type(mx))
     #print('type my: ',type(my))
+    enum = 1
+    while os.path.isdir('trial_'+str(enum)):
+        enum += 1
+    directory = 'trial_'+str(enum)
     objective, turb_power = Eval_Objective(mx,my,ma,A,B,numturbs)
     #objective = nomove * 1.
     for h in range(0, 1):
@@ -434,6 +483,10 @@ def EPS(mx, my, mz, ma):
                             my, transflag = Translation_Y(-step2, i, my)
                             innerflag = 1
                             print('turbine not moved up. Interference')
+                        elif check_layout(mx,my) == True:
+                            my, transflag = Translation_Y(-step2, i, my)
+                            innerflag = 1
+                            print('turbine not moved up. Layout already attempted')
                         else:       #if there is no interference, evaluate and store
                             move2, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
 
@@ -447,7 +500,7 @@ def EPS(mx, my, mz, ma):
                                 objective = move2 * 1.
                                 print('turbine ', i, ' moved up.', move2)
                                 print(my)
-                                print_graph(mx,my,i)
+                                print_graph(mx,my,i, directory)
                                 #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
                             
                 if innerflag == 1 and flag == 0:        #move 2 was just unsucessfully attempted
@@ -462,6 +515,10 @@ def EPS(mx, my, mz, ma):
                             mx, transflag = Translation_X(step2, i, mx)
                             innerflag = 2
                             print('turbine not left. Interference')
+                        elif check_layout(mx,my) == True:
+                            mx, transflag = Translation_X(step2, i, my)
+                            innerflag = 2
+                            print('turbine not moved left. Layout already attempted')
                         else:       #if there is no interference, evaluate and store
                             move3, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
 
@@ -475,7 +532,7 @@ def EPS(mx, my, mz, ma):
                                 objective = move3 * 1.
                                 print('turbine ', i, ' moved left.', move3)
                                 print(mx)
-                                print_graph(mx,my,i)
+                                print_graph(mx,my,i, directory)
                                 #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
                             
                 if innerflag == 2 and flag == 0:        #move 3 was just unsucessfully attempted
@@ -490,6 +547,10 @@ def EPS(mx, my, mz, ma):
                             my, transflag = Translation_Y(step2, i, my)
                             innerflag = 3
                             print('turbine not moved down. Interference')
+                        elif check_layout(mx,my) == True:
+                            my, transflag = Translation_Y(step2, i, my)
+                            innerflag = 3
+                            print('turbine not moved down. Layout already attempted')
                         else:       #if there is no interference, evaluate and store
                             move4, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
 
@@ -503,7 +564,7 @@ def EPS(mx, my, mz, ma):
                                 objective = move4 * 1.
                                 print('turbine ', i, ' moved down.', move4)
                                 print(my)
-                                print_graph(mx,my,i)
+                                print_graph(mx,my,i, directory)
                                 #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
                 if innerflag == 3 and flag == 0:
                     mx, transflag = Translation_X(step2, i, mx)     #move the turbine one step right
@@ -518,6 +579,10 @@ def EPS(mx, my, mz, ma):
                             mx, transflag = Translation_X(-step2, i, mx)
                             innerflag = 4
                             print('turbine not moved right. Interference')
+                        elif check_layout(mx,my) == True:
+                            mx, transflag = Translation_X(-step2, i, my)
+                            innerflag = 4
+                            print('turbine not moved left. Layout already attempted')
                         else:       #if there is no interference, evaluate and store
                             move1, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
 
@@ -531,133 +596,14 @@ def EPS(mx, my, mz, ma):
                                 objective = move1 * 1.
                             print('turbine ', i, ' moved right.', move1)
                             print(mx)
-                            print_graph(mx,my,i)
+                            print_graph(mx,my,i, directory)
                             #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
             
                 if innerflag == 4 and flag == 0:        #translation at this step size has resulted in no moves for this turbine
                     Stopped[i] = 1
                     #objective = nomove * 1.
                     #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
-                                
-                '''      
-                #Don't adjust pattern order based on position of field
-                elif my[i] < 0.:
-                    
-                    if innerflag == 0 and flag == 0:        #move 1 was just unsucessfully attempted
-                        my, transflag = Translation_Y(-step2, i, my)
-                        CHECK2 = 0
-                        if transflag == 1:      #if the translation moved the turbine out of bounds, go to next translation
-                            innerflag = 1       #move2 was attempted
-                            print('turbine not moved up.')
-                        else:
-                            CHECK2 = Check_Interference(mx, my, i)
-                            if CHECK2 == 1:         #if interference occurs, move the turbine back, go to next translation
-                                my, transflag = Translation_Y(step2, i, my)
-                                innerflag = 1
-                                print('turbine not moved up.')
-                            else:       #if there is no interference, evaluate and store
-                                move2, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
-
-                                if move2 >= objective:       #if evaluation is worse than initial, move back, go to next translation
-                                    my, transflag = Translation_Y(step2, i, my)
-                                    innerflag = 1
-                                    print('turbine not moved up.')
-                                else:       #evaluation is better, keep move, go to next turbine
-                                    flag = 1
-                                    turb_power = [w for w in turb_power2]
-                                    objective = move2 * 1.
-                                    print('turbine ', i, ' moved up.', move2)
-                                    #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
-                                
-                    if innerflag == 1 and flag == 0:        #move 2 was just unsucessfully attempted
-                        mx, transflag = Translation_X(-step2, i, mx)
-                        CHECK2 = 0
-                        if transflag == 1:      #if the translation moved the turbine out of bounds, go to next translation
-                            innerflag = 2       #move3 was attempted
-                            print('turbine not left.')
-                        else:
-                            CHECK2 = Check_Interference(mx, my, i)
-                            if CHECK2 == 1:         #if interference occurs, move the turbine back, go to next translation
-                                mx, transflag = Translation_X(step2, i, mx)
-                                innerflag = 2
-                                print('turbine not left.')
-                            else:       #if there is no interference, evaluate and store
-                                move3, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
-
-                                if move3 >= objective:       #if evaluation is worse than initial, move back, go to next translation
-                                    mx, transflag = Translation_X(step2, i, mx)
-                                    innerflag = 2
-                                    print('turbine not moved left.')
-                                else:       #evaluation is better, keep move, go to next turbine
-                                    flag = 1
-                                    turb_power = [w for w in turb_power2]
-                                    objective = move3 * 1.
-                                    print('turbine ', i, ' moved left.', move3)
-                                    #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
-                                
-                    if innerflag == 2 and flag == 0:        #move 3 was just unsucessfully attempted
-                        my, transflag = Translation_Y(step2, i, my)
-                        CHECK2 = 0
-                        if transflag == 1:      #if the translation moved the turbine out of bounds, go to next translation
-                            innerflag = 3       #move3 was attempted
-                            print('turbine not moved down.')
-                        else:
-                            CHECK2 = Check_Interference(mx, my, i)
-                            if CHECK2 == 1:         #if interference occurs, move the turbine back, go to next translation
-                                my, transflag = Translation_Y(-step2, i, my)
-                                innerflag = 3
-                                print('turbine not moved down.')
-                            else:       #if there is no interference, evaluate and store
-                                move4, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
-
-                                if move4 >= objective:       #if evaluation is worse than initial, move back, go to next translation
-                                    my, transflag = Translation_Y(-step2, i, my)
-                                    innerflag = 3
-                                    print('turbine not moved down.')
-                                else:       #evaluation is better, keep move, go to next turbine
-                                    flag = 1
-                                    turb_power = [w for w in turb_power2]
-                                    objective = move4 * 1.
-                                    print('turbine ', i, ' moved down.', move4)
-                                    #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
-                    if innerflag == 3 and flag == 0:
-                        mx, transflag = Translation_X(step2, i, mx)     #move the turbine one step right
-                        CHECK2 = 0
-                        if transflag == 1:          #if the translation moved the turbine out of bounds, go to next translation
-                            innerflag = 4           #signifies move 1 was attempted
-                            print('Turbine not moved right.')
-                    
-                        else:       #if there is the turbine is in bounds, evaluate and store
-                            CHECK2 = Check_Interference(mx, my, i)
-                            if CHECK2 == 1:         #if interference occurs, move the turbine back , go to next translation
-                                mx, transflag = Translation_X(-step2, i, mx)
-                                innerflag = 4
-                                print('turbine not moved right')
-                            else:       #if there is no interference, evaluate and store
-                                move1, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
-
-                                if move1 >= objective:             #if evaluation is worse than initial, move back, go to next translation
-                                    mx, transflag = Translation_X(-step2, i, mx)
-                                    innerflag = 4
-                                    print('Turbine not moved right.')
-                                else:
-                                    flag = 1           #signifies movement was kept
-                                    turb_power = [w for w in turb_power2]
-                                    objective = move1 * 1.
-                                print('turbine ', i, ' moved right.', move1)
-                                #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
-                             
-                     
-                    if innerflag == 4 and flag == 0:        #translation at this step size has resulted in no moves for this turbine
-                        Stopped[i] = 1
-                        #objective = nomove * 1.
-                        #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
-                    
-                        #for every turbine in random order
-                
-                        #check to see if all turbies have not been moved at this step
-                        #print_graph()
-                '''
+ 
             exit_css = sum(Stopped)        #exit current step size
             if exit_css == numturbs:
                 #all turbines have stopped moving at this step size, halving step size.
@@ -703,7 +649,7 @@ def EPS(mx, my, mz, ma):
                             objective = new_eval * 1.
                             #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, numturbs, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
                             print('Move has improved the evaluation. Continuing pattern serach.')
-                            print_graph(mx,my,min_turb)
+                            print_graph(mx,my,min_turb, directory)
                         else:
                             mx[min_turb] = initialx
                             my[min_turb] = initialy
@@ -718,8 +664,30 @@ def EPS(mx, my, mz, ma):
             #else:
                 #print('Turbines were not all placed at step size ', step2, '. Repeating.')
     return mx, my, mz
+###############################################################################
+def check_layout(mx,my):
+    coords = [(i,j) for i,j in zip(mx,my)] #zip into tuple
+    with open('layouts.txt') as layouts_file:
+        #print(sum(1 for i in layouts_file))
+        for line in layouts_file:
+            print(line)
+            line = line.strip('[]')
+            #line = line.split(',')
+            #print(line)
+            old_coords = [float(x.strip()) for x in line.split(',')]
+            old_coords = [(old_coords[i], old_coords[i + numturbs]) for i in range(numturbs)]
+            has_been = True
+            for i in coords:
+                if i not in old_coords:
+                    has_been = False
+                    break
+            if has_been == False:
+                new_layout = [mx + my]
+                layouts_file.write(str(new_layout))
+        layouts_file.close()
+    return has_been
 ###########################################################################################
-def print_graph(all_x,all_y,i):   
+def print_graph(all_x,all_y,i, directory):   
     fig = plt.figure()
     ax1 = fig.add_subplot(111)
     ax1.scatter(all_x, all_y, s=30, c='k', marker=(3,2))
@@ -728,12 +696,14 @@ def print_graph(all_x,all_y,i):
     plt.ylabel('Position (m)')
     plt.xlabel('Position (m)')
     plt.title(str('Optimization of ' + str(numturbs) + ' Turbines'))
-    plt.savefig(str('step_turb_' + str(i) + '.png'), bbox_inches='tight')
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    plt.savefig(directory + str('/step_turb_' + str(i) + '.png'), bbox_inches='tight')
 ###############################################################################
 '''things done each time code runs'''
 #which inflow angle to plot
 alpha = dirs[0]
-
+eval_num = 0
 #domain centered on (0,0)
 mesh = RectangleMesh(Point(-Lx/2., -Ly/2.), Point(Lx/2., Ly/2.), nx, ny)
 
@@ -814,12 +784,12 @@ if __name__ == "__main__":
     #print('mx: ',mx)
     #print('my: ',my)
     for i in range(bins):
-        
+        ### WHY AREN'T createRotateTurbineForce and main in the loop?? 
         # report power curve scalar function instead of functional for adjoint derivatives
         if i ==0:
-            Jfunc = weights[i]*rotatedPowerFunction(dirs[i],A,B,mx_opt,my_opt,ma,up_rot_opt,numturbs,V)
+            Jfunc = weights[i]*sum(rotatedPowerFunction(dirs[i],A,B,mx_opt,my_opt,ma,up_rot_opt,numturbs,V))
         else:
-            Jfunc = Jfunc + weights[i]*rotatedPowerFunction(dirs[i],A,B,mx_opt,my_opt,ma,up_rot_opt,numturbs,V)
+            Jfunc = Jfunc + weights[i]*sum(rotatedPowerFunction(dirs[i],A,B,mx_opt,my_opt,ma,up_rot_opt,numturbs,V))
     # power = assemble(Jfunc)
     print('power output: ')
     print(Jfunc)
