@@ -57,10 +57,9 @@ ny = 50 ###number of points in mesh
 
 #WTG parameters
 numturbs = 16
-
-inflowVel=8 ### ambient wind speed?
 #number of inflow direction bins
 bins = 1 ### Unidirectional wind
+windsp = [8., 10.] ### one wind speed
 WTGexp = 8. ### gamma for smoothing kernel (Eq. 12)
 radius = RD/2.
 thickness = RD/20.
@@ -81,16 +80,22 @@ gridStart = True ###gridded layout - must have 16 turbines
 optimize = False ###
 linearStart = False ###turbines in a row
 offgridStart = False
+
+checkpts = False
 '''only for adjoint method'''
 #if optimize == True:
 #    from dolfin_adjoint import *
 
-
+tot_evals = 0
 # inflow is always from left in simulation
-#dirs = np.linspace(pi/2., 2*pi+pi/2., bins, endpoint = False)
-dirs = np.linspace(0, 2*pi, bins, endpoint = False)
-weights = np.ones(bins)/bins ### assume even weightings
-
+dirs = np.linspace(pi/2., 2*pi+pi/2., bins, endpoint = False)
+#dirs = np.linspace(0, 2*pi, bins, endpoint = False)
+weights = np.ones(bins * len(windsp))/(bins * len(windsp)) ### assume even weightings
+wind_cases = []
+for i in dirs:
+    for j in windsp:
+        wind_cases.append((i,j)) #tuple of wind speed + wind diretion
+    
 
 # actuator disk distribution for normalization constant
 def WTGdist(x,y): ###smoothing kernel
@@ -302,7 +307,7 @@ def splitSolution(m_opt,numturbs):
         
     return mx_opt,my_opt
 
-def main(tf):
+def main(tf, wind_case):
     nu = Constant(.00005) ### kinematic viscosity
     f = Constant((0.,0.))
     up_next = Function(VQ) ### up_next becomes tuple of vector and finite elements for wind speed and pressure
@@ -312,7 +317,7 @@ def main(tf):
         def __init__(self,**kwargs):
             random.seed(2) ### WHY IS THIS HERE?
         def eval(self, values, x):
-            values[0] = inflowVel
+            values[0] = wind_cases[wind_case][1]
             values[1] = 0.0
             values[2] = 0.0
         def value_shape(self):
@@ -361,7 +366,7 @@ def main(tf):
     bc1a = DirichletBC(VQ.sub(0).sub(1), Constant(0.0), NoSlipBoundary())
 
     # inflow BC
-    bc2 = DirichletBC(VQ.sub(0), Constant((inflowVel,0.0)), InflowBoundary())
+    bc2 = DirichletBC(VQ.sub(0), Constant((wind_cases[wind_case][1],0.0)), InflowBoundary())
     # bc2a = DirichletBC(VQ.sub(0).sub(0), Constant(8.), InflowBoundary())
 
     # outflow pressure BC is implicitly 0
@@ -379,15 +384,17 @@ def main(tf):
     return u_next, up_next
 ###############################################################################
 def Eval_Objective(mx,my,ma,A,B,numturb):
+    global tot_evals
+    tot_evals += 1
     start = time()
     J = 0.
     cumulative_power = [0.] * numturbs
-    for i in range(bins): ###for each wind direction
-        tf_rot= createRotatedTurbineForce(mx,my,ma,A,B,numturbs,dirs[i],V) ### calculate force imparted by turbines
-        u_rot, up_rot = main(tf_rot)  ### RANS solver
-        power_dev = rotatedPowerFunction(dirs[i],A,beta,mx,my,ma,up_rot,numturbs,V)
+    for i in range(bins * len(windsp)): ###for each wind direction
+        tf_rot= createRotatedTurbineForce(mx,my,ma,A,B,numturbs,wind_cases[i][0],V) ### calculate force imparted by turbines
+        u_rot, up_rot = main(tf_rot, i)  ### RANS solver
+        power_dev = rotatedPowerFunction(wind_cases[i][0],A,beta,mx,my,ma,up_rot,numturbs,V)
         J = J - weights[i]*sum(power_dev)
-        cumulative_power = [k+j for k,j in zip(power_dev,cumulative_power)]
+        cumulative_power = [k*weights[i]+j for k,j in zip(power_dev,cumulative_power)]
         print('time to evaluate bin: ', time() - start)
         print('unweighted power from bin: ',sum(power_dev))
         start = time()
@@ -444,6 +451,10 @@ def Check_Interference(mx, my, n):
     return CHECK2
 ###############################################################################
 def EPS(mx, my, mz, ma):
+    #clear last layouts file
+    with open('layouts.txt', 'w') as layouts_file:
+        layout_file.close()
+        
     Stopped = [0.] * numturbs
     #print('type mx: ',type(mx))
     #print('type my: ',type(my))
@@ -667,23 +678,30 @@ def EPS(mx, my, mz, ma):
 ###############################################################################
 def check_layout(mx,my):
     coords = [(i,j) for i,j in zip(mx,my)] #zip into tuple
-    with open('layouts.txt') as layouts_file:
+    has_been = True
+    check = 0
+    num = 0
+    with open('layouts.txt', 'a+') as layouts_file:
         #print(sum(1 for i in layouts_file))
         for line in layouts_file:
+            num += 1
             print(line)
             line = line.strip('[]')
             #line = line.split(',')
             #print(line)
             old_coords = [float(x.strip()) for x in line.split(',')]
             old_coords = [(old_coords[i], old_coords[i + numturbs]) for i in range(numturbs)]
-            has_been = True
             for i in coords:
                 if i not in old_coords:
-                    has_been = False
+                    check += 1
                     break
-            if has_been == False:
-                new_layout = [mx + my]
-                layouts_file.write(str(new_layout))
+        if abs(check - num) < 0.00005:
+            has_been = False
+        if has_been == False:
+            new_layout = [mx + my]
+            layouts_file.write(str(new_layout))
+        else:
+            print('layout previously checked')
         layouts_file.close()
     return has_been
 ###########################################################################################
@@ -739,7 +757,9 @@ if __name__ == "__main__":
 
     if optimize == True: 
         print('optimizing - line 751')
+        start_time = time()
         mx_opt,my_opt,mz_opt = EPS(mx, my, mz, ma)
+        analysis_time = time() - start_time
         '''
         # power functional
         J = Functional(0.) ### what is this??? - data structure type
@@ -773,6 +793,8 @@ if __name__ == "__main__":
         my_opt = my
         mz_opt = mz
 
+    Jfunc = Eval_Objective(mx_opt,my_opt,ma,A,B,numturbs)
+    '''
     tf_rot_opt= createRotatedTurbineForce(mx_opt,my_opt,ma,A,B,numturbs,dirs[0],V)
     tf_rot_opt_out = project(tf_rot_opt, V)
     # plot(tf_rot_opt_out)
@@ -791,18 +813,29 @@ if __name__ == "__main__":
         else:
             Jfunc = Jfunc + weights[i]*sum(rotatedPowerFunction(dirs[i],A,B,mx_opt,my_opt,ma,up_rot_opt,numturbs,V))
     # power = assemble(Jfunc)
+    '''
     print('power output: ')
-    print(Jfunc)
-    data = [Jfunc]
-    output = 'off'
+    print(Jfunc[0])
+    data = [Jfunc[0]]
+    output = 'on'
     if output == 'on':
-        with open('CFD_output.csv', "a+") as csv_file:
-            writer = csv.writer(csv_file, delimiter=',')
-            for line in data:
-                writer.writerow(line)
-
+        enum = 1
+        while os.path.isfile('output_'+str(enum)+'.txt'):
+            enum += 1
+        with open('output_'+str(enum)+'.txt', 'w') as output_file:
+            output_file.write('x locations: '+str(mx))
+            output_file.write('y locations: '+ str(my))
+            output_file.write('wind cases (dir, speed): '+ str(wind_cases))
+            output_file.write('J: '+ str(Jfunc[0]))
+            output_file.write('Cumulative power: '+ str(Jfunc[1]))
+            output_file.write('objective evaluations: '+ str(tot_evals))
+            if optimize == True:
+                output_file.write('optimization time: '+str(analysis_time))
+            output_file.close()
+    '''
     u_rot_opt_out=project(u_rot_opt, V)
 
     uStr='u.pvd'
     file2 = File(uStr)
     file2 << u_rot_opt_out
+    '''
