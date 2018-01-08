@@ -69,7 +69,8 @@ HH=80
 initExtent=.95 ### create buffer on grid layout
 mlDenom=2. ### mixing length denom - not sure how this is arrived at
 
-
+Ct = 0.75
+Cp = 0.34
 #site/refinement constraints
 site_x = 15.*RD ###size of farm
 site_y = 15.*RD ###size of farm
@@ -213,7 +214,8 @@ def createRotatedTurbineForce(mx,my,ma,A,beta,numturbs,alpha,V):
         yrot = sin(alpha)*mx[i] + cos(alpha)*my[i]
         ### force imported on the flow by each wind turbine = 0.5 * rho * An*c't*smoothing kernal / beta - no multiplication by magnitude because we assume turbine is turned into wind
         ### why no windspeed included? why no rho included? - rho cancelled out, windspeed multiplied within main() function
-        tf = tf + 0.5*4.*A*ma[i]/(1.-ma[i])/beta*exp(-(((x[0] - xrot)/thickness)**WTGexp + ((x[1] - yrot)/radius)**WTGexp))*WTGbase.copy(deepcopy=True)
+        #tf = tf + 0.5*4.*A*ma[i]/(1.-ma[i])/beta*exp(-(((x[0] - xrot)/thickness)**WTGexp + ((x[1] - yrot)/radius)**WTGexp))*WTGbase.copy(deepcopy=True)
+        tf = tf + 0.5*A*Ct/((1.-ma[i]) ** 2)/beta*exp(-(((x[0] - xrot)/thickness)**WTGexp + ((x[1] - yrot)/radius)**WTGexp))*WTGbase.copy(deepcopy=True)
     if checkpts == True:  
         check_it = project(tf, V)
         n = [check_it(cos(alpha)*mx[i] - sin(alpha)*my[i], sin(alpha)*mx[i] + cos(alpha)*my[i]) for i in range(numturbs)]
@@ -234,8 +236,8 @@ def rotatedPowerFunctional(alpha,A,beta,mx,my,ma,u,numturbs,V):
         xrot = cos(alpha)*mx[i] - sin(alpha)*my[i]
         yrot = sin(alpha)*mx[i] + cos(alpha)*my[i]
 
-        J = J + 0.5*4.*np.pi*radius**2*ma[i]/(1.-ma[i])/beta*Functional(exp(-(((x[0] - xrot)/thickness)**WTGexp + ((x[1] - yrot)/radius)**WTGexp))*u[0]**3.*dx) ### /beta added by Annalise 12/13/17
-
+        #J = J + 0.5*4.*np.pi*radius**2*ma[i]/(1.-ma[i])/beta*Functional(exp(-(((x[0] - xrot)/thickness)**WTGexp + ((x[1] - yrot)/radius)**WTGexp))*u[0]**3.*dx) ### /beta added by Annalise 12/13/17
+        J = J + 0.5*np.pi*radius**2*Cp/((1.-ma[i]) ** 3)/beta*Functional(exp(-(((x[0] - xrot)/thickness)**WTGexp + ((x[1] - yrot)/radius)**WTGexp))*u[0]**3.*dx) ### /beta added by Annalise 12/13/17
     return J
 
 def rotatedPowerFunction(alpha,A,beta,mx,my,ma,up,numturbs,V):
@@ -259,7 +261,8 @@ def rotatedPowerFunction(alpha,A,beta,mx,my,ma,up,numturbs,V):
         #print(up.sub(0)(xrot,yrot)[0])
         #J = 0.5*np.pi*radius**2*4*float(ma[i])*(1.-float(ma[i]))**2*up.sub(0)(xrot,yrot)[0]**3 
         print(up.sub(0)(xrot,yrot)[0])
-        J.append(0.5*air_density*np.pi*radius**2*4*float(ma[i])/(1.-float(ma[i]))*up.sub(0)(xrot,yrot)[0]**3)
+        #J.append(0.5*air_density*np.pi*radius**2*4*float(ma[i])/(1.-float(ma[i]))*up.sub(0)(xrot,yrot)[0]**3)
+        J.append(0.5*air_density*np.pi*radius**2*Cp/((1.-float(ma[i])) ** 3)*up.sub(0)(xrot,yrot)[0]**3)
         ### up.sub(0)(xrot,yrot)[0] --> up == u and p combined --> sub(0) == just u --> (xrot, yrot) == position of interest (center pt) --> [0] == x-velocity
 
     return J
@@ -749,7 +752,7 @@ if __name__ == "__main__":
     '''create layout after previous specification of random, gridded, or seeded'''
     mx,my,mz = createLayout(numturbs)
     ### array of 0.33?? Why?
-    ma=[Constant(mm) for mm in 0.33*np.ones(numturbs)] ###axial induction factor
+    ma=[Constant(mm) for mm in 0.25*np.ones(numturbs)] ###axial induction factor
     ### calculate the double integral of the smoothing kernel for 
     beta = integrate.dblquad(WTGdist,-3*radius,3*radius,lambda x: -3*radius,lambda x: 3*radius)
 
