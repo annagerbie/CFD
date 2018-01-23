@@ -5,25 +5,31 @@ Created on Tue Aug  9 11:21:39 2016
 @author: Annalise
 """
 
-import math
+#import math
 import random
 #import os
 import matplotlib.pyplot as plt
 import os
 global nemo
+import numpy as np
+from time import time
 nemo = 1
 
 init_step = 400.0           #Step Size for translation, in m
 #area = 2000.0              #Length of one side of solution area, in m
-XLength = 2000.             #Length of one side of solution area, in m
-YLength = 2000.             #Length of one side of solution area, in m
-U0 = [8.0, 10.0]      #mean wind speed, in m/s
+
+site_x = 15. * 80.             #Length of one side of solution area, in m  
+site_y = 15. * 80.              #Length of one side of solution area, in m  
+XLength = site_x * 1.2             #Length of one side of solution area, in m
+YLength = site_y * 1.2               #Length of one side of solution area, in m
+U0 = [8.0]      #mean wind speed, in m/s
 #z = 60                     #hub height, in m
 #Rr = 20                    #Rotor Radius, in m
 Ct = 0.88                   #Thrust Coefficient
 #aif = 0.1909830056250526    #Axial induction factor based on Cp = 0.5
-aif = 0.25
-wind_cases = [(0.5, 0.5)]
+#aif = 0.25
+aif = 1./3. #for testing
+wind_cases = [[1.0]]
 #wind_cases = [(0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011),
 #              (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011),
 #              (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.011, 0.012), (0.004, 0.013, 0.015), (0.004, 0.016, 0.017), 
@@ -60,10 +66,10 @@ WCOE = 0.1                  #wholdsale cost of electricity, in $/kWh
 yrs = 20.0
 
 output = 'off'
-
-ma = 0.33
-#Cp = 4*float(ma)*(1.-float(ma))**2
-Cp = 0.34
+nwp = False
+#ma = 0.33
+Cp = 16./27. #for testing
+#Cp = 0.34
 #Cf = 0.4
 Cf = 1.
 Cutin = 3.0         #cut-in wind speed
@@ -80,7 +86,7 @@ directions  = []
 #degrees = [0., 10., 20., 30., 40., 50., 60., 70., 80., 90., 100., 110., 120., 130., 140., 150., 160., 170., 180., 190., 200., 210., 220., 230., 240., 250., 260., 270., 280., 290., 300., 310., 320., 330., 340., 350.]
 degrees = [0.]
 for l in range(0, len(degrees)):
-    radians = (degrees[l] / 180.) * math.pi
+    radians = (degrees[l] / 180.) * np.pi
     directions.append(radians)
 #prob = [1./len(directions)] * len(directions)   #probability of wind from each direction
 #probu0 = [1./len(U0)] * len(U0) #probability of each ambiant wind speed
@@ -117,13 +123,32 @@ elif condition == "UNSTABLE":
     BPow = -0.1352
     alphah = 0.08
  
-layout_type = 'grid'
+layout_type = 'linear'
 
+if layout_type == 'test':
+    YLocation = [[0.], [200.], [200.]]
+    ZLocation = [[0.], [0.], [0.]]
+    initial_num = 3
+    spacing = 300.
+    XLocation = [[0.], [-spacing / 2.], [spacing / 2.]]
+    for i in range(len(XLocation)):
+        xfinish1 = [XLocation[i][0]]
+        yfinish1 = [YLocation[i][0]]
+        for k in range(1, len(directions)):
+            theta = directions[k]
+            newy = (xfinish1[0] * np.sin(theta)) + (yfinish1[0] * np.cos(theta))            #find preliminary new x-location given step size  
+            yfinish1.append(newy)
+            newx = (xfinish1[0] * np.cos(theta)) - (yfinish1[0] * np.sin(theta))    
+            xfinish1.append(newx)
+        YLocation[i] = yfinish1
+        XLocation[i] = xfinish1
+    
 if layout_type == 'grid':
+    initExtent = 0.95
     rows = 4
     cols = 4
-    xpos = np.linspace(-initExtent*(site_x - radius),initExtent*(site_x - radius),cols)
-    ypos = np.linspace(-initExtent*(site_y - radius),initExtent*(site_y - radius),rows)
+    xpos = np.linspace(-initExtent*(site_x - 40.),initExtent*(site_x - 40.),cols)
+    ypos = np.linspace(-initExtent*(site_y - 40.),initExtent*(site_y - 40.),rows)
     #print('xlocations')
     #print(xpos)
     YLocation = []
@@ -135,9 +160,9 @@ if layout_type == 'grid':
             yfinish1 = [ypos[i]]
             for k in range(1, len(directions)):
                 theta = directions[k]
-                newy = (xpos[j] * math.sin(theta)) + (ypos[i] * math.cos(theta))            #find preliminary new x-location given step size  
+                newy = (xpos[j] * np.sin(theta)) + (ypos[i] * np.cos(theta))            #find preliminary new x-location given step size  
                 yfinish1.append(newy)
-                newx = (xpos[j] * math.cos(theta)) - (ypos[i] * math.sin(theta))    
+                newx = (xpos[j] * np.cos(theta)) - (ypos[i] * np.sin(theta))    
                 xfinish1.append(newx)
             YLocation.append(yfinish1)
             XLocation.append(xfinish1)
@@ -148,11 +173,11 @@ if layout_type == 'grid':
     #title = 'Grid Layout'
     initial_num = 16
                 
-if layout_type == 'offset':
+elif layout_type == 'offset':
     rows = 4
     cols = 4
-    xpos = np.linspace(-initExtent*(site_x - radius),initExtent*(site_x - radius),cols)
-    ypos = np.linspace(-initExtent*(site_y - radius),initExtent*(site_y - radius),rows)
+    xpos = np.linspace(-initExtent*(site_x - 40.),initExtent*(site_x - 40.),cols)
+    ypos = np.linspace(-initExtent*(site_y - 40.),initExtent*(site_y - 40.),rows)
     offset = ypos[1] - ypos[0]
     xpos2 = []
     for i in ypos:
@@ -163,16 +188,16 @@ if layout_type == 'offset':
     XLocation = []
     for i in range(rows):
         for j in range(cols):
-            if k % 2 == 0:
+            if i % 2 != 0:
                 xfinish1 = [xpos[j]]
             else:
                 xfinish1 = [xpos2[j]]
             yfinish1 = [ypos[i]]
             for k in range(1, len(directions)):
                 theta = directions[k]
-                newy = (xfinish1[0] * math.sin(theta)) + (yfinish1[0] * math.cos(theta))            #find preliminary new x-location given step size  
+                newy = (xfinish1[0] * np.sin(theta)) + (yfinish1[0] * np.cos(theta))            #find preliminary new x-location given step size  
                 yfinish1.append(newy)
-                newx = (xfinish1[0] * math.cos(theta)) - (yfinish1[0] * math.sin(theta))    
+                newx = (xfinish1[0] * np.cos(theta)) - (yfinish1[0] * np.sin(theta))    
                 xfinish1.append(newx)
             YLocation.append(yfinish1)
             XLocation.append(xfinish1)
@@ -185,7 +210,7 @@ if layout_type == 'offset':
 
 elif layout_type == 'linear':
     '''My adds'''
-    ypos = np.linspace(-initExtent*(site_x - radius),initExtent*(site_x - radius),10)
+    ypos = np.linspace(-initExtent*(site_x - 40.),initExtent*(site_x - 40.),10)
     xpos = np.array([0.] * 10)
     ZLocation = np.array([0.] * 10)
     YLocation = []
@@ -195,9 +220,9 @@ elif layout_type == 'linear':
         yfinish1 = [ypos[j]]
         for k in range(1, len(directions)):
             theta = directions[k]
-            newy = (xfinish1[0] * math.sin(theta)) + (yfinish1[0] * math.cos(theta))            #find preliminary new x-location given step size  
+            newy = (xfinish1[0] * np.sin(theta)) + (yfinish1[0] * np.cos(theta))            #find preliminary new x-location given step size  
             yfinish1.append(newy)
-            newx = (xfinish1[0] * math.cos(theta)) - (yfinish1[0] * math.sin(theta))    
+            newx = (xfinish1[0] * np.cos(theta)) - (yfinish1[0] * np.sin(theta))    
             xfinish1.append(newx)
         YLocation.append(yfinish1)
         XLocation.append(xfinish1)
@@ -211,14 +236,14 @@ elif layout_type == 'optimized':
     ZLocation = np.array([0.] * len(xpos))
     YLocation = []
     XLocation = []
-    for j in range(10):
+    for j in range(len(xpos)):
         xfinish1 = [xpos[j]]
         yfinish1 = [ypos[j]]
         for k in range(1, len(directions)):
             theta = directions[k]
-            newy = (xfinish1[0] * math.sin(theta)) + (yfinish1[0] * math.cos(theta))            #find preliminary new x-location given step size  
+            newy = (xfinish1[0] * np.sin(theta)) + (yfinish1[0] * np.cos(theta))            #find preliminary new x-location given step size  
             yfinish1.append(newy)
-            newx = (xfinish1[0] * math.cos(theta)) - (yfinish1[0] * math.sin(theta))    
+            newx = (xfinish1[0] * np.cos(theta)) - (yfinish1[0] * np.sin(theta))    
             xfinish1.append(newx)
         YLocation.append(yfinish1)
         XLocation.append(xfinish1)
@@ -270,14 +295,14 @@ def Translation_X(step_size, i, directions):
     ystart = turbines[i].YLocation[0]
     #print(xstart, step_size)
     xfinish = xstart + step_size            #find preliminary new x-location given step size
-    if xfinish >= 0 and xfinish <= XLength:    #if this new x-location is not out of bounds, translate it
+    if xfinish >= 0 and xfinish <= site_x:    #if this new x-location is not out of bounds, translate it
         xfinish1 = [xfinish]
         yfinish1 = [ystart]
         for j in range(1, len(directions)):
             theta = directions[j]
-            newy = (xfinish * math.sin(theta)) + (ystart * math.cos(theta))
+            newy = (xfinish * np.sin(theta)) + (ystart * np.cos(theta))
             yfinish1.append(newy)
-            newx = (xfinish * math.cos(theta)) - (ystart * math.sin(theta)) #find preliminary new x-location given step size  
+            newx = (xfinish * np.cos(theta)) - (ystart * np.sin(theta)) #find preliminary new x-location given step size  
             xfinish1.append(newx)
         turbines[i].XLocation = xfinish1
         turbines[i].YLocation = yfinish1
@@ -294,14 +319,14 @@ def Translation_Y(step_size, i, directions):
     ystart = turbines[i].YLocation[0]
     xstart = turbines[i].XLocation[0]
     yfinish = ystart + step_size            #find preliminary new x-location given step size
-    if yfinish >= 0 and yfinish <= YLength:    #if this new x-location is not out of bounds, translate it  
+    if yfinish >= 0 and yfinish <= site_y:    #if this new x-location is not out of bounds, translate it  
         xfinish1 = [xstart]
         yfinish1 = [yfinish]
         for j in range(1, len(directions)):
             theta = directions[j]
-            newy = (xstart * math.sin(theta)) + (yfinish * math.cos(theta))            #find preliminary new x-location given step size  
+            newy = (xstart * np.sin(theta)) + (yfinish * np.cos(theta))            #find preliminary new x-location given step size  
             yfinish1.append(newy)
-            newx = (xstart * math.cos(theta)) - (yfinish * math.sin(theta))    
+            newx = (xstart * np.cos(theta)) - (yfinish * np.sin(theta))    
             xfinish1.append(newx)
         turbines[i].YLocation = yfinish1
         turbines[i].XLocation = xfinish1
@@ -321,12 +346,12 @@ def Initial_Layout():
             ymove = 0
             CHECK2 = 0
 
-            random_X = random.uniform(0, XLength)
+            random_X = random.uniform(0, site_x)
             xmove = random_X
             #print('xmove = ', xmove)
             Translation_X(xmove, n, directions)
             #print(turbines[n].XLocation)
-            random_Y = random.uniform(0, YLength)
+            random_Y = random.uniform(0, site_y)
             ymove = random_Y
             #print('ymove = ', ymove)
             Translation_Y(ymove, n, directions)
@@ -366,7 +391,7 @@ def Check_Interference(n):
             ynew = turbines[k].YLocation[0]
             checkx = x - xnew
             checky = y - ynew
-            checkrad = math.sqrt(checkx ** 2.0 + checky ** 2.0)
+            checkrad = np.sqrt(checkx ** 2.0 + checky ** 2.0)
             if checkrad < 200:
                 CHECK2 = 1
     return CHECK2
@@ -383,9 +408,46 @@ def Check_Interference(n):
 #            checkrad = []
 #            checkx = XLocation[k] - XLocation[n]
 #            checky = YLocation[k] - YLocation[n]
-#            checkrad.append(math.sqrt(checkx ** 2 + checky ** 2))
+#            checkrad.append(np.sqrt(checkx ** 2 + checky ** 2))
 #    checkcheck.append(min(checkrad))
 #print (checkcheck)  a
+###############################################################################
+def check_layout(mx,my):
+    coords = [(i,j) for i,j in zip(mx,my)] #zip into tuple
+    has_been = True
+    check = 0
+    num = 0
+    with open('layouts_E.txt', 'r') as layouts_file:
+        #print(sum(1 for i in layouts_file))
+        line = layouts_file.readline()
+        while line:
+            num += 1
+            line = line.replace('[','').replace(']','')
+            #print(line)
+            #line = line.split(',')
+            #print(line)
+            old_coords = [float(x.strip()) for x in line.split(',')]
+            old_coords = [(old_coords[i], old_coords[i + initial_num]) for i in range(initial_num)]
+            for i in coords:
+                #print(i)
+                space_tot = [np.sqrt((j[0] - i[0]) ** 2 + (j[1] - i[1]) ** 2) for j in old_coords] #list of distance between each point and existing point
+                if all(i >= 0.005 for i in space_tot): #new point
+                    check += 1
+                    #print('pt not in this layout')
+                    break
+            line = layouts_file.readline()
+        layouts_file.close()
+    if abs(check - num) < 0.00005:
+        has_been = False
+    if has_been == False:
+        with open('layouts_E.txt', 'a+') as layouts_file:
+            new_layout = mx + my
+            #print('new layout: ',new_layout)
+            layouts_file.write(str(new_layout)+'\n')
+    else:
+        print('layout previously checked')
+        
+    return has_been
 ################################################################################################################
 def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
     
@@ -405,7 +467,7 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
             for i in range(0, initial_num): #upstream turbine
                 if j != i:
                     hubheight = turbines[i].HubHeight 
-                    alpha = 0.5 / (math.log(hubheight / z0))
+                    alpha = 0.5 / (np.log(hubheight / z0))
                     turbines[i].alpha = alpha
                     y = turbines[i].YLocation[direction]
                     x = turbines[i].XLocation[direction]
@@ -424,7 +486,7 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                             wake_rad = (alpha * dist) + Rr  #define radius of triangular wake                        
                             kz = turbines[j].HubHeight   #kz is the z coordinate of the rotor k's hub
                             jz = turbines[i].HubHeight   #jz is the z coordinate of the wake's center
-                            cd = math.sqrt((x - khub) ** 2.0 + (jz - kz) ** 2.0)   #distance between the centerline of wake and rotor hub
+                            cd = np.sqrt((x - khub) ** 2.0 + (jz - kz) ** 2.0)   #distance between the centerline of wake and rotor hub
                             if cd < (wake_rad + krad):  #if distance between centers is less than the sum of the two radii, the rotor swept area is in the wake
                                 In_Wakek.append(i)
                                 wake_d.append(wake_rad * 2.0)
@@ -484,7 +546,7 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                 #jy = turbines[j].YLocation[wd]                  #y coordinate of the wake's center
                 jwakerad = (turbines[i].wakewidth[wd][0]) / 2.0   #radius of wake width
                 dist = turbines[i].distance[wd][0]
-                cd = math.sqrt(((jx-kx) ** 2.0) + ((jz - kz) ** 2.0))   #distance between centerline of wake and rotor hub           
+                cd = np.sqrt(((jx-kx) ** 2.0) + ((jz - kz) ** 2.0))   #distance between centerline of wake and rotor hub           
                 int1_den = 2.0 * cd * krad
     
                 if cd + krad <= jwakerad:                         #if dsturbine is completely in usturbine wake, overlap = 100%
@@ -492,8 +554,8 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                     #print('works')
                 
                 elif cd + jwakerad <= krad:                 #if the wake is fully encompassed by the rotor diameter    
-                    wakearea = math.pi * (jwakerad ** 2.0)
-                    percentwake = wakearea / (math.pi * (krad ** 2.0))
+                    wakearea = np.pi * (jwakerad ** 2.0)
+                    percentwake = wakearea / (np.pi * (krad ** 2.0))
                     parpercent.append(percentwake)
     
                 else:
@@ -502,11 +564,11 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                     int2_den = 2.0 * cd * jwakerad                
                     integrand2 = ((cd ** 2.0) + (jwakerad ** 2.0) - (krad ** 2.0)) / int2_den
                     #print(integrand2) 
-                    q = (krad ** 2.0) * (math.acos(integrand1)) 
-                    b = (jwakerad ** 2.0) * (math.acos(integrand2))
-                    c = 0.5 * math.sqrt((-cd + krad + jwakerad) * (cd + krad - jwakerad) * (cd - krad + jwakerad) * (cd + krad + jwakerad))
+                    q = (krad ** 2.0) * (np.arccos(integrand1)) 
+                    b = (jwakerad ** 2.0) * (np.arccos(integrand2))
+                    c = 0.5 * np.sqrt((-cd + krad + jwakerad) * (cd + krad - jwakerad) * (cd - krad + jwakerad) * (cd + krad + jwakerad))
                     AOverlap = q + b - c
-                    RSA = ((math.pi) * (krad ** 2.0))
+                    RSA = ((np.pi) * (krad ** 2.0))
                     z = AOverlap / RSA
                     parpercent.append(z)      #percentage of RSA that has wake interaction 
                 
@@ -520,7 +582,7 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                 secondx = turbines[second].XLocation[wd]
                 secondz = turbines[second].HubHeight
                 secondrad = turbines[i].wakewidth[wd][1] / 2.0
-                cd = math.sqrt(((firstx - secondx) ** 2.0) + ((firstz - secondz) ** 2.0))   #distance between the centerline of wake and rotor hub
+                cd = np.sqrt(((firstx - secondx) ** 2.0) + ((firstz - secondz) ** 2.0))   #distance between the centerline of wake and rotor hub
     
                 if cd > (firstrad + secondrad):     #if wakes do not overlap at all within the rotor swept area
                     #m = []
@@ -532,26 +594,26 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                         #jy = turbines[j].YLocation[wd]             #y location of the wake's center
                         jwakerad = (turbines[i].wakewidth[wd][q]) / 2.0
                         dist = turbines[i].distance[wd][q]
-                        cd = math.sqrt(((jx - kx) ** 2.0) + ((jz - kz) ** 2.0))     #distance between the centerline of wake and rotor hub
+                        cd = np.sqrt(((jx - kx) ** 2.0) + ((jz - kz) ** 2.0))     #distance between the centerline of wake and rotor hub
                            
     
                         if cd + krad <= jwakerad:
                             parpercent.append(1.0)
     
                         elif cd + jwakerad <= krad:           #if the wake is fully encompassed by the rotor diameter
-                            wakearea = math.pi * (jwakerad ** 2.0)
-                            percentwake = wakearea / (math.pi * (krad ** 2.0))
+                            wakearea = np.pi * (jwakerad ** 2.0)
+                            percentwake = wakearea / (np.pi * (krad ** 2.0))
                             parpercent.append(percentwake)
                             
                         else:
                             integrand1 = ((cd ** 2.0) + (krad ** 2.0) - (jwakerad ** 2.0)) / (2.0 * cd * krad)
                             integrand2 = ((cd ** 2.0) + (jwakerad ** 2.0) - (krad ** 2.0)) / (2.0 * cd * jwakerad)             
-                            d = (krad ** 2.0) * (math.acos(integrand1)) 
-                            b = (jwakerad ** 2.0) * (math.acos(integrand2))
-                            c = 0.5 * math.sqrt((-cd + krad + jwakerad) * (cd + krad - jwakerad) * (cd - krad + jwakerad) * (cd + krad + jwakerad))
+                            d = (krad ** 2.0) * (np.arccos(integrand1)) 
+                            b = (jwakerad ** 2.0) * (np.arccos(integrand2))
+                            c = 0.5 * np.sqrt((-cd + krad + jwakerad) * (cd + krad - jwakerad) * (cd - krad + jwakerad) * (cd + krad + jwakerad))
                             AOverlap = d + b - c
-                            #AOverlap = ((krad ** 2.0) * math.acos(integrand1)) + ((jwakerad ** 2.0) * math.acos(integrand2)) - 0.5 * math.sqrt(abs((-cd + krad + jwakerad) * (cd + krad - jwakerad) * (cd - krad + jwakerad) * (cd + krad + jwakerad)))
-                            RSA = math.pi * (krad ** 2.0)
+                            #AOverlap = ((krad ** 2.0) * np.arccos(integrand1)) + ((jwakerad ** 2.0) * np.arccos(integrand2)) - 0.5 * np.sqrt(abs((-cd + krad + jwakerad) * (cd + krad - jwakerad) * (cd - krad + jwakerad) * (cd + krad + jwakerad)))
+                            RSA = np.pi * (krad ** 2.0)
                             z = AOverlap / RSA
                             parpercent.append(z)      #percentage of RSA that has wake interaction
                     
@@ -580,13 +642,11 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                     #USht = turbines[USturb].HubHeight
                     x = turbines[k].distance[wd][0]
                     hubheight = turbines[k].HubHeight
-                    temp = (0.5 / math.log(hubheight / z0))
-                    #turbines[k].alpha = temp
-                    alpha = temp
+                    alpha = (0.5 / np.log(hubheight / z0))
                     Rr = turbines[k].RotorRad
                     
                     #Grady Model 
-                    r1 = Rr * math.sqrt((1-aif) / (1 - 2*aif))
+                    r1 = Rr * np.sqrt((1-aif) / (1 - 2*aif))
                     EWU = U0[u0i] * (1 - (2*aif)/((1+alpha*(x/r1))**(2)))
                     Uz = EWU * ((hubheight / Zref) ** alphah)
                     #print(turbines[k].percent[wd][0])
@@ -602,26 +662,27 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                         x = turbines[k].distance[wd][j]
                         #USturb = turbines[k].usturbines[wd][j]
                         hubheight = turbines[k].HubHeight
-                        alpha = 0.5 / math.log(hubheight / z0)
+                        alpha = 0.5 / np.log(hubheight / z0)
                         Rr = turbines[k].RotorRad
-                        r1 = Rr * math.sqrt((1 - aif) / (1 - 2 * aif))
+                        r1 = Rr * np.sqrt((1 - aif) / (1 - 2 * aif))
                         EWU = U0[u0i] * (1 - (2*aif)/((1+alpha*(x/r1))**(2)))
                         Uz = EWU * ((hubheight / Zref) ** alphah)
                         portion += Uz * turbines[k].percent[wd][j]
                     remainder = U0[u0i] * (1.0 - turbines[k].percent[wd][0] - turbines[k].percent[wd][1]) * ((hubheight / Zref) ** alphah)
                     total = portion + remainder                 #weighted average of windspeeds
                     wdsp.append(total)
-                        
+                 
                 elif len(turbines[k].usturbines[wd]) >= 2 and len(turbines[k].percent[wd]) == 0:      #turbine has at least two upstream turbines whos wakes overlap
                     coordWS = []
+                    usturbcoord = [[] for i in range(len(turbines[k].xcoords[wd]))]
                     for i in range(0, len(turbines[k].xcoords[wd])):        #xcoords created in Discretize_RSA
                         decWS = []
                         xval = turbines[k].xcoords[wd][i]
                         zval = turbines[k].zcoords[wd][i]
                         khub = turbines[k].HubHeight
-                        #alpha = 0.5 / math.log(zval / z0)
+                        #alpha = 0.5 / np.log(zval / z0)
                         Rr = turbines[k].RotorRad
-                        #r1 = Rr * math.sqrt((1.0 - aif) / (1.0 - 2.0 * aif))
+                        #r1 = Rr * np.sqrt((1.0 - aif) / (1.0 - 2.0 * aif))
                         for j in range(0, len(turbines[k].usturbines[wd])):
                             x = turbines[k].distance[wd][j]
                             US = turbines[k].usturbines[wd][j]
@@ -635,7 +696,7 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                             zhubturb = zval * 1.
                             rt2 = abs(zhubturb - zhubc)        #height of the triangular portion of the chord area in z
                             rt1 = abs(xturb - xc)              #height of the triangluar portion of the chord area in x
-                            space = math.sqrt((rt2 ** 2) + (rt1 ** 2))      #distance between wake center and discritized point
+                            space = np.sqrt((rt2 ** 2) + (rt1 ** 2))      #distance between wake center and discritized point
                             '''
                             if k == 14:
                                 print(rt2)
@@ -646,12 +707,14 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                             '''
                             if space <= r2:        #if point is within wake
                                 Rr = turbines[k].RotorRad
-                                alpha = 0.5 / math.log(zval / z0)
+                                alpha = 0.5 / np.log(zval / z0)
                                 #Grady's a
-                                r1 = Rr * math.sqrt((1 - aif) / (1 - 2 * aif))
+                                r1 = Rr * np.sqrt((1 - aif) / (1 - 2 * aif))
                                 Uz = U0[u0i] * (1 - (2*aif)/((1+alpha*(x/r1))**(2)))
                                 decWS.append(Uz)
-                                
+                                usturbcoord[i].append(US)
+                        #print('i: ',i)
+                        #print('usturbcoord: ',usturbcoord)        
                         coordui = 0.0        
                         if len(decWS) != 0:
         
@@ -664,8 +727,8 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                                 for l in range(0, len(decWS)):
                                     u = decWS[l]
                                     tally += ((1.0 - (u / U0[u0i])) ** 2.0)
-                                #print('should be pos: ',math.sqrt(tally),': turbine ', k)
-                                coordui = U0[u0i] * (1 - (math.sqrt(tally))) * ((zval / Zref) ** alphah)
+                                #print('should be pos: ',np.sqrt(tally),': turbine ', k)
+                                coordui = U0[u0i] * (1 - (np.sqrt(tally))) * ((zval / Zref) ** alphah)
                                 coordWS.append(coordui)
                                 
                         else:               #if the point has no wakes acting on it
@@ -675,14 +738,31 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                             #print('error if grid: turbine ', k)                            
                             
                     #Sum discretized wind speeds
-                    tally2 = 0.0
-                    percentage = 1.0 / float(len(coordWS))
-                    #print(coordWS)
-                    for f in range(0, len(coordWS)):
-                        tally2 += percentage * coordWS[f]
-        
-                    d = len(coordWS)
-                    wdsp.append(tally2)
+                    #nested wake provision
+                    if set([usturbcoord[0] == i for i in usturbcoord]) == {True} and nwp == True:
+                        #find index of closest upstream wake
+                        usindex = turbines[k].usturbines[wd][turbines[k].distance[wd].index(min(turbines[k].distance[wd]))]
+                        #print("analyzing turbine: ",k)
+                        #print('only reducing speed from turbine: ',usindex)
+                        x = min(turbines[k].distance[wd])
+                        hubheight = turbines[k].HubHeight
+                        alpha = (0.5 / np.log(hubheight / z0))
+                        Rr = turbines[k].RotorRad
+                        
+                        #Grady Model 
+                        r1 = Rr * np.sqrt((1-aif) / (1 - 2*aif))
+                        EWU = turbines[usindex].ui[wd] * (1 - (2*aif)/((1+alpha*(x/r1))**(2)))
+                        wdsp.append(EWU * ((hubheight / Zref) ** alphah))
+                        
+                    else: #no nested wake
+                        tally2 = 0.0
+                        percentage = 1.0 / float(len(coordWS))
+                        #print(coordWS)
+                        for f in range(0, len(coordWS)):
+                            tally2 += percentage * coordWS[f]
+            
+                        d = len(coordWS)
+                        wdsp.append(tally2)
     
         turbines[k].ui = wdsp
         turbines[k].windspeeds = wdsp
@@ -691,7 +771,7 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
     for i in range(0, initial_num):
         pwr = []
         rorad = turbines[i].RotorRad
-        Area = (rorad ** 2.0) * math.pi
+        Area = (rorad ** 2.0) * np.pi
         for wd in range(0, len(probwui)):
             ''' #power curve consideration
             #incorporating power curve suggested by Pat, June 10th
@@ -725,7 +805,7 @@ def Compute_Cost(initial_num, ro, yrs, WCOE, condition, depth):
     
     for i in range (0, initial_num):
         rorad = turbines[i].RotorRad
-        Area = (rorad ** 2.0) * math.pi
+        Area = (rorad ** 2.0) * np.pi
         turbines[i].Area = Area             #define Area for each turbine
         cf = 0.4    #capcity factor
         Prated = 0.5 * ro * Area * (11.5 ** 3.0) * 0.5      #calculate rated power in Watts
@@ -769,7 +849,7 @@ def Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, 
     objective = 0.
     for j in range(0, initial_num):
         for ws in range(0, len(probwui)):
-            objective += turbines[j].Power[ws]
+            objective -= turbines[j].Power[ws]
             #windspeeds += turbines[i].ui
     return objective
 #####################################################################################################################
@@ -799,6 +879,9 @@ def Rand_Vector(initial_num):
 ######################################################################################################################
 def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, num_pops, max_pop_tries, hstep, i, hstepmin, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif, directions):
     
+    with open('layouts_E.txt', 'w') as layouts_file: #clear layoutfile
+        layouts_file.close()
+        
     Clear_Vectors()
     nomove = Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, aif)
 
@@ -822,7 +905,7 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                 
                 Clear_Vectors()
                 #print('The nomove value for turbine ', i, ' is ', nomove)
-                
+                #print('step size: ',step2)
                 #('stepped into while loop')
                 if innerflag == 0 and flag == 0:        #move 1 was just unsucessfully attempted
                     transflag = Translation_Y(step2, i, directions)
@@ -844,6 +927,10 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                                 Translation_Y(-step2, i, directions)
                                 innerflag = 1
                                 #print('turbine not moved up.')
+                            elif check_layout([i.XLocation[0] for i in turbines],[i.YLocation[0] for i in turbines]) == True:
+                                Translation_Y(-step2, i, directions)
+                                innerflag = 1
+                                print('turbine not moved up. Layout already attempted')
                             else:       #evaluation is better, keep move, go to next turbine
                                 flag = 1
                                 nomove = move2 * 1.
@@ -870,6 +957,10 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                                 Translation_X(step2, i, directions)
                                 innerflag = 2
                                 #print('turbine not moved left.')
+                            elif check_layout([i.XLocation[0] for i in turbines],[i.YLocation[0] for i in turbines]) == True:
+                                Translation_X(step2, i, directions)
+                                innerflag = 1
+                                print('turbine not moved up. Layout already attempted')
                             else:       #evaluation is better, keep move, go to next turbine
                                 flag = 1
                                 nomove = move3 * 1.
@@ -896,6 +987,10 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                                 Translation_Y(step2, i, directions)
                                 innerflag = 3
                                 #print('turbine not moved down.')
+                            elif check_layout([i.XLocation[0] for i in turbines],[i.YLocation[0] for i in turbines]) == True:
+                                Translation_Y(step2, i, directions)
+                                innerflag = 1
+                                print('turbine not moved up. Layout already attempted')
                             else:       #evaluation is better, keep move, go to next turbine
                                 flag = 1
                                 nomove = move4 * 1.
@@ -922,6 +1017,10 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                                 Translation_X(-step2, i, directions)
                                 innerflag = 4
                                 #print('Turbine not moved right.')
+                            elif check_layout([i.XLocation[0] for i in turbines],[i.YLocation[0] for i in turbines]) == True:
+                                Translation_X(-step2, i, directions)
+                                innerflag = 1
+                                print('turbine not moved up. Layout already attempted')
                             else:
                                 flag = 1           #signifies movement was kept
                                 nomove = move1 * 1.
@@ -965,10 +1064,10 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                         checkx = 0
                         while checkx != 1:      #will try random locations until one has no interference
                             CHECK2 = 0
-                            random_X = random.uniform(0, XLength)
+                            random_X = random.uniform(0, site_x)
                             xmove = random_X
                             turbines[min_turb].XLocation[0] = xmove
-                            random_Y = random.uniform(0, XLength)
+                            random_Y = random.uniform(0, site_y)
                             ymove = random_Y
                             turbines[min_turb].YLocation[0] = ymove
                             CHECK2 = Check_Interference(min_turb)
@@ -976,8 +1075,8 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                                 checkx = 1          #place turbine and exit poping loop
                                 for j in range(1, len(directions)):
                                     theta = directions[j]
-                                    turbines[min_turb].XLocation[j] = (xmove* math.cos(theta)) - (ymove * math.sin(theta))
-                                    turbines[min_turb].YLocation[j] = (xmove * math.sin(theta)) + (ymove * math.cos(theta))
+                                    turbines[min_turb].XLocation[j] = (xmove* np.cos(theta)) - (ymove * np.sin(theta))
+                                    turbines[min_turb].YLocation[j] = (xmove * np.sin(theta)) + (ymove * np.cos(theta))
                                 #print('Turbine ', min_turb, ' has moved to a new location.')
                             else:
                                 turbines[min_turb].XLocation[0] = initialx
@@ -998,8 +1097,8 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                             turbines[min_turb].YLocation[0] = initialy
                             for j in range(1, len(directions)):
                                     theta = directions[j]
-                                    turbines[min_turb].XLocation[j] = (initialx* math.cos(theta)) - (initialy * math.sin(theta))
-                                    turbines[min_turb].YLocation[j] = (initialx * math.sin(theta)) + (initialy * math.cos(theta))
+                                    turbines[min_turb].XLocation[j] = (initialx* np.cos(theta)) - (initialy * np.sin(theta))
+                                    turbines[min_turb].YLocation[j] = (initialx * np.sin(theta)) + (initialy * np.cos(theta))
                             #print('Move did not improve evaluation. Trying new moves.')
                         k += 1
                         
@@ -1439,7 +1538,7 @@ def print_graph():
     ax1.scatter(yellowsqx, yellowsqy, s=10, c='y', marker="s")
     ax1.scatter(greensqx, greensqy, s=10, c='g', marker="s")
     ax1.scatter(bluesqx, bluesqy, s=10, c='b', marker="s")
-    #plt.axis([0, XLength, 0, YLength])
+    #plt.axis([0, site_x, 0, site_y])
     plt.ylabel('Position (m)')
     plt.xlabel('Position (m)')
     plt.title(str('Optimization of ' + str(initial_num) + ' Turbines'))
@@ -1454,7 +1553,7 @@ def length(j, k):
     
     term1 = (x1 - x2) ** 2
     term2 = (y1 - y2) ** 2
-    length = math.sqrt(term1 + term2)
+    length = np.sqrt(term1 + term2)
     return length   
 ##############################################################################################################
 # Find Closest Turbines
@@ -1668,7 +1767,7 @@ else:
     num_lines = 1
     
 if output == 'on':
-    excel = open('Case2, BreifDatapt.txt', 'w') 
+    excel = open('Jensen_out/Case2, BreifDatapt.txt', 'w') 
     excel.write(str('number of turbines, final evaluation, power output, efficiency, number of evaluations made, input file line number \n'))
 #i = 1
 #initial_num = 15
@@ -1680,12 +1779,12 @@ for line in range(0, num_lines):
     if output == 'on':
         #initial_num = int(initial_num_file.readline())
         trial_num = 1
-        while os.path.isfile('Case2 ' + str(initial_num) + 'Test ' + str(trial_num) + '.txt'):
+        while os.path.isfile('Jensen_out/Case2 ' + str(initial_num) + 'Test ' + str(trial_num) + '.txt'):
             trial_num += 1
-        data_out = open('Case2 ' + str(initial_num) + 'Test ' + str(trial_num) + '.txt', 'w')
+        data_out = open('Jensen_out/Case2 ' + str(initial_num) + 'Test ' + str(trial_num) + '.txt', 'w')
     if rand_start == True:
-        XLocation = [0.0] * len(directions)
-        YLocation = [0.0] * len(directions)
+        XLocation = [[0.0] * len(directions)] * initial_num
+        YLocation = [[0.0] * len(directions)] * initial_num
     ZLocation = [0.0] * initial_num
     HubHeight = [80.0] * initial_num
     OldHubHeight = [80.0] * initial_num
@@ -1745,8 +1844,10 @@ for line in range(0, num_lines):
     if output == 'on':
         data_out.write(str('The initial layout has a score of: ' + str(score) + '\n'))
     if hardcode == False:
+        start_time = time()
         Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, num_pops, max_pop_tries, hstep, i, hstepmin, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif, directions)
-        
+        total_time = time() - start_time
+        print('time to run EPS: ',total_time)
         if output == 'on':
             XLocation = []
             YLocation = []
@@ -1777,7 +1878,7 @@ for line in range(0, num_lines):
     windspeeds = 0.0
     #sum_it = 0
     for i in range(0, initial_num):
-        Area = math.pi * ((turbines[i].RotorRad) ** 2.)
+        Area = np.pi * ((turbines[i].RotorRad) ** 2.)
         hubheight = turbines[i].HubHeight
         for d in range(0, len(probwui)):
             total += turbines[i].Power[d]
@@ -1795,6 +1896,13 @@ for line in range(0, num_lines):
     efficiency = total/possible * 100
     print('efficiency = ', efficiency)
     print('total power = ', total)
+
+    for i in turbines:
+        print(i.ui[0])
+    '''
+    for i in turbines:
+        print(i.Power[0])
+    '''
     #print('Farm Output Power is ', total, 'Watts')
     if output == 'on':
         for i in range(0, initial_num):
@@ -1804,14 +1912,14 @@ for line in range(0, num_lines):
         data_out.write(str('The total power generated was: ' + str(total) + ' kW. \n'))    
     
         #rorad = turbines[k].RotorRad
-        #Area = math.pi * (rorad ** 2.0)
+        #Area = np.pi * (rorad ** 2.0)
         #temp1 = 0.3 * (12 ** 3.0)
         #possible += temp1
         #efficiency = (total / possible) * 100
         #print('Farm efficiency is ', efficiency, '%.')
         data_out.write(str('The efficiency of the layout was: ' + str(efficiency) + '%. \n'))
         data_out.write(str('The Objective was calculated ' + str(nemo) + ' times. \n'))
-        
+        data_out.write(str('The pattern serach ran in '+str(total_time)+' s\n'))
         excel.write(str(str(initial_num) + ',' + str(score) + ',' + str(total) + ',' + str(efficiency) + ',' + str(nemo) + ',' + str(line + 1) + '\n'))
     
         #print_graph()
