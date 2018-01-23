@@ -11,6 +11,7 @@ import random as random
 from scipy import integrate
 from scipy import stats
 from time import time
+from datetime import datetime
 import sys
 #import csv
 import matplotlib.pyplot as plt
@@ -32,8 +33,8 @@ DBG       = 10  // sundry
 
 '''
 air_density = 1.225 #kg/m^3
-#init_step = 400. #initial step size
-init_step = 200. #changed for testing
+init_step = 400. #initial step size
+#init_step = 200. #changed for testing
 minstep = 3. #minimum step size
 num_pops = 5
 max_pop_tries = 1000
@@ -52,14 +53,12 @@ RD = 80.
 degree = 2
 Lx = 60.*RD ###size of mesh (NOT FARM)
 Ly = 60.*RD ###size of mesh (NOT FARM)
-nx = 50 ###number of points in mesh
-ny = 50 ###number of points in mesh
+numx = 50 ###number of points in mesh
+numy = 50 ###number of points in mesh
 
-#WTG parameters
-numturbs = 16
 #number of inflow direction bins
 bins = 1 ### Unidirectional wind
-windsp = [8., 10.] ### one wind speed
+windsp = [8.] ### one wind speed
 WTGexp = 8. ### gamma for smoothing kernel (Eq. 12)
 radius = RD/2.
 thickness = RD/20.
@@ -69,27 +68,45 @@ HH=80
 initExtent=.95 ### create buffer on grid layout
 mlDenom=2. ### mixing length denom - not sure how this is arrived at
 
-Ct = 0.75
-Cp = 0.34
+#Ct = 0.75
+Ct = 8./9. #limit for testing
+#Cp = 0.34
+Cp = 16./27. #betz limit for testing
 #site/refinement constraints
 site_x = 15.*RD ###size of farm
 site_y = 15.*RD ###size of farm
 
+###only one of these should be true to work
 restart = False ###seeded layout (must go into layout function to change seed)
 randStart = False ###random layout
-gridStart = True ###gridded layout - must have 16 turbines
-optimize = False ###
+gridStart = False ###gridded layout - must have 16 turbines
 linearStart = False ###turbines in a row
 offgridStart = False
+test_turb = False
+old_good = True ### previous good layout
+if old_good == True:
+    site_x = 30. * RD
+    sity_y = 30. * RD
+    Lx = 120. * RD
+    Ly = 120. * RD
+    numturbs = 18
+elif offgridStart == True or gridStart == True:
+    numturbs = 16
+elif linearStart == True:
+    numturbs = 10
+else:
+    numturbs = 10
 
-checkpts = False
+heat_output = True
+optimize = False ###
+checkpts = False #creates plots of turbine movement throughout optimization
 '''only for adjoint method'''
 #if optimize == True:
 #    from dolfin_adjoint import *
 
 tot_evals = 0
 # inflow is always from left in simulation
-dirs = np.linspace(pi/2., 2*pi+pi/2., bins, endpoint = False)
+dirs = np.linspace(-pi/2., 2*pi-pi/2., bins, endpoint = False)
 #dirs = np.linspace(0, 2*pi, bins, endpoint = False)
 weights = np.ones(bins * len(windsp))/(bins * len(windsp)) ### assume even weightings
 wind_cases = []
@@ -121,6 +138,14 @@ def createLayout(numturbs):
     my=[]
     mz=[]
 
+    if test_turb == True:
+        my = [0., 200., 200.]
+        spacing = 300.
+        mz = [HH] *numturbs
+        mx = [0., -spacing / 2., spacing / 2.]
+        #mx = [0.] * numturbs
+        #my = [i*spacing for i in range(numturbs)]
+
     ###if you've specified a random starting array
     if randStart == True:
         for i in range(numturbs):
@@ -138,6 +163,7 @@ def createLayout(numturbs):
         ###Can only accept 16 turbines
         if numturbs == 16:
             rows = 4
+            #rows = 1
             cols = 4
             xpos = np.linspace(-initExtent*(site_x - radius),initExtent*(site_x - radius),cols)
             ypos = np.linspace(-initExtent*(site_y - radius),initExtent*(site_y - radius),rows)
@@ -155,8 +181,8 @@ def createLayout(numturbs):
                     
     elif linearStart == True:
         '''My adds'''
-        mx = np.linspace(-initExtent*(site_x - radius),initExtent*(site_x - radius),numturbs)
-        my = np.array([0] * numturbs)
+        my = np.linspace(-initExtent*(site_x - radius),initExtent*(site_x - radius),numturbs)
+        mx = np.array([0] * numturbs)
         mz = np.array([HH] * numturbs)
         
     elif offgridStart == True:
@@ -179,6 +205,11 @@ def createLayout(numturbs):
                 my.append(ypos[i])
                 mz.append(HH)
 
+    elif old_good == True:
+        mx = [1304.2130491853543, 303.16195377176825, 1882.7665062612382, 734.1365122392898, 36.582152829805295, 1078.6666766839614, 1779.34556196998, 417.79552464946823, 1986.6903503041713, 133.48666173166612, 1430.1977444645, 954.8374274350235, 839.2773010244406, 1186.314920647951, 518.9482768461385, 1681.3296876680367, 621.3034610992612, 1567.283691418906]
+        my = [204.01944774702838, 270.02673301978496, 276.97611783621744, 305.2706459401636, 1065.3030786448571, 104.67022680498235, 610.6008734856377, 450.6469581295796, 32.94310546319856, 1290.6284216353858, 413.28638998844144, 611.4810784612052, 117.69510957163021, 489.9943326680768, 225.4370943493467, 858.4028566999443, 505.9650483803546, 1212.01937488221]
+        mz = [HH] * numturbs
+        
     elif restart == True:
         # fixed layout here
         m_temp = [Constant(-113.961988283),Constant(-386.535837904),Constant(-512.116113959),Constant(-237.354391531),Constant(638.697968355),Constant(13.6826901448),Constant(386.535838424),Constant(-113.961987466),Constant(13.6826875361),Constant(-638.697971072),Constant(-887.942379804),Constant(-813.542880381),Constant(813.542880031),Constant(-887.942379852),Constant(237.354391629),Constant(-512.116113931),Constant(-237.3543916),Constant(512.116113865),Constant(-813.542880345),Constant(887.942379783),Constant(887.942379753),Constant(813.542880265),Constant(-13.6826884631),Constant(638.697970038),Constant(-386.535837846),Constant(113.961988218),Constant(-638.697970958),Constant(-13.6826879195),Constant(512.116113711),Constant(237.354391612),Constant(113.961988),Constant(386.535838129)]
@@ -212,6 +243,7 @@ def createRotatedTurbineForce(mx,my,ma,A,beta,numturbs,alpha,V):
         #rotation
         xrot = cos(alpha)*mx[i] - sin(alpha)*my[i]
         yrot = sin(alpha)*mx[i] + cos(alpha)*my[i]
+        #print((xrot, yrot))
         ### force imported on the flow by each wind turbine = 0.5 * rho * An*c't*smoothing kernal / beta - no multiplication by magnitude because we assume turbine is turned into wind
         ### why no windspeed included? why no rho included? - rho cancelled out, windspeed multiplied within main() function
         #tf = tf + 0.5*4.*A*ma[i]/(1.-ma[i])/beta*exp(-(((x[0] - xrot)/thickness)**WTGexp + ((x[1] - yrot)/radius)**WTGexp))*WTGbase.copy(deepcopy=True)
@@ -240,7 +272,7 @@ def rotatedPowerFunctional(alpha,A,beta,mx,my,ma,u,numturbs,V):
         J = J + 0.5*np.pi*radius**2*Cp/((1.-ma[i]) ** 3)/beta*Functional(exp(-(((x[0] - xrot)/thickness)**WTGexp + ((x[1] - yrot)/radius)**WTGexp))*u[0]**3.*dx) ### /beta added by Annalise 12/13/17
     return J
 
-def rotatedPowerFunction(alpha,A,beta,mx,my,ma,up,numturbs,V):
+def rotatedPowerFunction(alpha,A,beta,mx,my,ma,up,numturbs,V, heat = False):
     ### used in developing final power
     #emulating an actual power curve
     x=SpatialCoordinate(mesh)
@@ -264,9 +296,41 @@ def rotatedPowerFunction(alpha,A,beta,mx,my,ma,up,numturbs,V):
         #J.append(0.5*air_density*np.pi*radius**2*4*float(ma[i])/(1.-float(ma[i]))*up.sub(0)(xrot,yrot)[0]**3)
         J.append(0.5*air_density*np.pi*radius**2*Cp/((1.-float(ma[i])) ** 3)*up.sub(0)(xrot,yrot)[0]**3)
         ### up.sub(0)(xrot,yrot)[0] --> up == u and p combined --> sub(0) == just u --> (xrot, yrot) == position of interest (center pt) --> [0] == x-velocity
-
-    return J
-
+    if heat == True:
+        heat_out = [[]]
+        outvals = 500
+        nx = [cos(alpha)*mx[i] - sin(alpha)*my[i] for i in range(numturbs)]
+        ny = [sin(alpha)*mx[i] + cos(alpha)*my[i] for i in range(numturbs)]
+        interval_x = (max(nx) - min(nx)) * 2. / outvals
+        if interval_x > 0.01:
+            x_start = min(nx) - (max(nx) - min(nx)) * 0.5 + interval_x / 2.
+            x1 = min(nx) - (max(nx) - min(nx)) * 0.5
+            x2 = max(nx) + (max(nx) - min(nx)) * 0.5
+        else:
+            x_start = min(nx) - 100. + 200. / (2. * outvals)
+            interval_x = 200. / outvals
+            x1 = min(nx) - 100.
+            x2 = max(nx) + 100.
+        interval_y = (max(ny) - min(ny)) * 2. / outvals
+        if interval_y > 0.01:
+            y_start = min(ny) - (max(ny) - min(ny)) * 0.5 + interval_y / 2.
+            y1 = min(ny) - (max(ny) - min(ny)) * 0.5
+            y2 = max(ny) + (max(ny) - min(ny)) * 0.5
+        else:
+            y_start = min(ny) - 100. + 200. / (2. * outvals)
+            interval_y = 200. / outvals
+            y1 = min(ny) - 100.
+            y2 = max(ny) + 100.
+        spacing_outx = [i * interval_x + x_start for i in range(outvals)]
+        spacing_outy_sub = [i * interval_y + y_start for i in range(outvals)]
+        spacing_outy = [spacing_outy_sub[-i] for i in range(1,len(spacing_outy_sub)+1)]
+        for j in spacing_outy:
+            heat_out[0].append([up.sub(0)(i,j)[0] for i in spacing_outx])
+        heat_out.append([x1, x2, y1, y2])
+        #print(heat_out)
+        return J, heat_out
+    else:
+        return J
 
 def createControl(mx,my,numturbs):
         m = []
@@ -386,7 +450,7 @@ def main(tf, wind_case):
         file << nu_T_out
     return u_next, up_next
 ###############################################################################
-def Eval_Objective(mx,my,ma,A,B,numturb):
+def Eval_Objective(mx,my,ma,A,B,numturb,heat = False):
     global tot_evals
     tot_evals += 1
     start = time()
@@ -395,14 +459,23 @@ def Eval_Objective(mx,my,ma,A,B,numturb):
     for i in range(bins * len(windsp)): ###for each wind direction
         tf_rot= createRotatedTurbineForce(mx,my,ma,A,B,numturbs,wind_cases[i][0],V) ### calculate force imparted by turbines
         u_rot, up_rot = main(tf_rot, i)  ### RANS solver
-        power_dev = rotatedPowerFunction(wind_cases[i][0],A,beta,mx,my,ma,up_rot,numturbs,V)
+        if heat == True and i == 0: #only calc heat for wind from left
+            power_dev,heat_out = rotatedPowerFunction(wind_cases[i][0],A,beta,mx,my,ma,up_rot,numturbs,V, True)
+        else:
+            power_dev = rotatedPowerFunction(wind_cases[i][0],A,beta,mx,my,ma,up_rot,numturbs,V)
         J = J - weights[i]*sum(power_dev)
         cumulative_power = [k*weights[i]+j for k,j in zip(power_dev,cumulative_power)]
         print('time to evaluate bin: ', time() - start)
+        print('power by turbine: ') 
+        for i in power_dev:
+            print(i/1000.)
         print('unweighted power from bin: ',sum(power_dev))
         start = time()
     print('new evaluation: ',J)
-    return J, cumulative_power
+    if heat == True:
+        return J, cumulative_power,heat_out
+    else:
+        return J, cumulative_power
 #######################################################################################################################
 def Rand_Vector(numturbs):
     random_vec = []
@@ -456,7 +529,7 @@ def Check_Interference(mx, my, n):
 def EPS(mx, my, mz, ma):
     #clear last layouts file
     with open('layouts.txt', 'w') as layouts_file:
-        layout_file.close()
+        layouts_file.close()
         
     Stopped = [0.] * numturbs
     #print('type mx: ',type(mx))
@@ -701,7 +774,7 @@ def check_layout(mx,my):
         if abs(check - num) < 0.00005:
             has_been = False
         if has_been == False:
-            new_layout = [mx + my]
+            new_layout = mx + my
             layouts_file.write(str(new_layout))
         else:
             print('layout previously checked')
@@ -726,7 +799,7 @@ def print_graph(all_x,all_y,i, directory):
 alpha = dirs[0]
 eval_num = 0
 #domain centered on (0,0)
-mesh = RectangleMesh(Point(-Lx/2., -Ly/2.), Point(Lx/2., Ly/2.), nx, ny)
+mesh = RectangleMesh(Point(-Lx/2., -Ly/2.), Point(Lx/2., Ly/2.), numx, numy)
 
 h = mesh.hmin()
 
@@ -752,7 +825,7 @@ if __name__ == "__main__":
     '''create layout after previous specification of random, gridded, or seeded'''
     mx,my,mz = createLayout(numturbs)
     ### array of 0.33?? Why?
-    ma=[Constant(mm) for mm in 0.25*np.ones(numturbs)] ###axial induction factor
+    ma=[Constant(mm) for mm in 1./3.*np.ones(numturbs)] ###axial induction factor
     ### calculate the double integral of the smoothing kernel for 
     beta = integrate.dblquad(WTGdist,-3*radius,3*radius,lambda x: -3*radius,lambda x: 3*radius)
 
@@ -792,11 +865,21 @@ if __name__ == "__main__":
 
     # otherwise go strait to final plotting routine, plot last inflow direction
     else:
-        mx_opt = mx
-        my_opt = my
-        mz_opt = mz
-
-    Jfunc = Eval_Objective(mx_opt,my_opt,ma,A,B,numturbs)
+        mx_opt = [i for i in mx]
+        my_opt = [i for i in my]
+        mz_opt = [i for i in mz]
+    if heat_output == True:
+        Jfunc,cum_power,heat_out = Eval_Objective(mx_opt,my_opt,ma,A,B,numturbs,True)
+        plt.imshow(heat_out[0], cmap='hot', interpolation='nearest', extent=heat_out[1])
+        plt.colorbar()
+        nx = [cos(dirs[0])*mx[i] - sin(dirs[0])*my[i] for i in range(numturbs)]
+        ny = [sin(dirs[0])*mx[i] + cos(dirs[0])*my[i] for i in range(numturbs)]
+        for i,j in zip(nx,ny):
+            plt.plot([i,i],[j - radius, j + radius], '-k')
+        now = datetime.now()
+        plt.savefig('heat_out_'+str(now.month)+'_'+str(now.day)+'_'+str(now.hour)+'_'+str(now.minute)+'.png', bbox_inches='tight')
+    else:
+        Jfunc,cum_power = Eval_Objective(mx_opt,my_opt,ma,A,B,numturbs)
     '''
     tf_rot_opt= createRotatedTurbineForce(mx_opt,my_opt,ma,A,B,numturbs,dirs[0],V)
     tf_rot_opt_out = project(tf_rot_opt, V)
@@ -818,23 +901,24 @@ if __name__ == "__main__":
     # power = assemble(Jfunc)
     '''
     print('power output: ')
-    print(Jfunc[0])
-    data = [Jfunc[0]]
+    print(Jfunc)
+    data = [Jfunc]
     output = 'on'
     if output == 'on':
         enum = 1
-        while os.path.isfile('output_'+str(enum)+'.txt'):
+        while os.path.isfile('outputs/output_'+str(enum)+'.txt'):
             enum += 1
-        with open('output_'+str(enum)+'.txt', 'w') as output_file:
+        with open('outputs/output_'+str(enum)+'.txt', 'w') as output_file:
             output_file.write('x locations: '+str(mx))
             output_file.write('y locations: '+ str(my))
             output_file.write('wind cases (dir, speed): '+ str(wind_cases))
-            output_file.write('J: '+ str(Jfunc[0]))
-            output_file.write('Cumulative power: '+ str(Jfunc[1]))
+            output_file.write('J: '+ str(Jfunc))
+            output_file.write('Cumulative power: '+ str(cum_power))
             output_file.write('objective evaluations: '+ str(tot_evals))
             if optimize == True:
                 output_file.write('optimization time: '+str(analysis_time))
             output_file.close()
+
     '''
     u_rot_opt_out=project(u_rot_opt, V)
 
