@@ -1,9 +1,7 @@
 
-__author__ = "Ryan King <ryan.king@nrel.gov>"
-__date__ = "2017-11-21"
-__copyright__ = "Copyright (c) NREL 2017. All rights reserved."
-__license__  = "Apache License, Version 2.0"
-
+__author__ = "Annalise Miller <millanna@oregonstate.edu>"
+__coauthor__ = "Ryan King <ryan.king@nrel.gov>"
+__date__ = "2017-12-1"
 
 from dolfin import *
 import numpy as np
@@ -51,8 +49,8 @@ RD = 80.
 
 # mesh parameters
 degree = 2
-Lx = 60.*RD ###size of mesh (NOT FARM)
-Ly = 60.*RD ###size of mesh (NOT FARM)
+Lx = 90.*RD ###size of mesh (NOT FARM)
+Ly = 90.*RD ###size of mesh (NOT FARM)
 numx = 50 ###number of points in mesh
 numy = 50 ###number of points in mesh
 
@@ -83,7 +81,8 @@ gridStart = False ###gridded layout - must have 16 turbines
 linearStart = False ###turbines in a row
 offgridStart = False
 test_turb = False
-old_good = True ### previous good layout
+old_good = False ### previous good layout
+coloradoStart = True
 if old_good == True:
     site_x = 30. * RD
     sity_y = 30. * RD
@@ -94,6 +93,14 @@ elif offgridStart == True or gridStart == True:
     numturbs = 16
 elif linearStart == True:
     numturbs = 10
+elif coloradoStart == True:
+    RD = 77.
+    radius = RD / 2.
+    site_x = 250. * RD
+    sity_y = 250. * RD
+    Lx = 500. * RD
+    Ly = 500. * RD
+    numturbs = 37
 else:
     numturbs = 10
 
@@ -209,6 +216,11 @@ def createLayout(numturbs):
         mx = [1304.2130491853543, 303.16195377176825, 1882.7665062612382, 734.1365122392898, 36.582152829805295, 1078.6666766839614, 1779.34556196998, 417.79552464946823, 1986.6903503041713, 133.48666173166612, 1430.1977444645, 954.8374274350235, 839.2773010244406, 1186.314920647951, 518.9482768461385, 1681.3296876680367, 621.3034610992612, 1567.283691418906]
         my = [204.01944774702838, 270.02673301978496, 276.97611783621744, 305.2706459401636, 1065.3030786448571, 104.67022680498235, 610.6008734856377, 450.6469581295796, 32.94310546319856, 1290.6284216353858, 413.28638998844144, 611.4810784612052, 117.69510957163021, 489.9943326680768, 225.4370943493467, 858.4028566999443, 505.9650483803546, 1212.01937488221]
         mz = [HH] * numturbs
+        
+    elif coloradoStart == True:
+        mx = [-6680.980411, -6549.425159, -6380.075027, -6197.64205, -6015.935896, -5834.229741, -3668.29226, -3799.847528, -3435.70836, -3230.016971, -6651.907427, -6455.664786, -6265.236739, -6075.535515, -5810.971353, -5660.518655, -5505.705008, -5284.750318, -5082.693066, -4877.728514, -4743.992777, -4621.159409, -4735.270881, -4497.599216, -3722.077287, -3590.522019, -3462.600873, -3332.499253, -3274.353278, -3082.471558, -2533.718907, -2334.568937, -2151.409109, -1912.283778, -1732.758073, -1599.022325, -1551.778718]
+        my = [-16892.41457, -16682.25616, -16486.55309, -16286.40222, -16109.60229, -15913.89922, -15251.17746, -15518.04528, -15084.38507, -14958.7348, -14737.4569, -14570.66451, -14410.54381, -14241.52752, -13962.42826, -13814.539, -13652.19441, -13447.59575, -13315.27378, -13175.16818, -12957.22612, -12707.03754, -11972.03907, -11891.97872, -11993.16611, -11794.12719, -11599.53607, -11399.3852, -11183.66704, -10937.92625, -10207.37558, -10036.1354, -9870.454957, -9691.431125, -9536.870177, -9323.375918, -9012.030123]
+        mz = [HH] * len(mx)  
         
     elif restart == True:
         # fixed layout here
@@ -877,6 +889,9 @@ if __name__ == "__main__":
         for i,j in zip(nx,ny):
             plt.plot([i,i],[j - radius, j + radius], '-k')
         now = datetime.now()
+        plt.title('Cross-Field Wind Speed')
+        plt.xlabel('Crosswind Distance (m)')
+        plt.ylabel('Downwind Distance (m)')
         plt.savefig('heat_out_'+str(now.month)+'_'+str(now.day)+'_'+str(now.hour)+'_'+str(now.minute)+'.png', bbox_inches='tight')
     else:
         Jfunc,cum_power = Eval_Objective(mx_opt,my_opt,ma,A,B,numturbs)
