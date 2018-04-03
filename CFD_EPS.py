@@ -14,7 +14,8 @@ import sys
 #import csv
 import matplotlib.pyplot as plt
 import os
-
+from mpi4py import MPI
+plt.switch_backend('agg')
 sys.getrecursionlimit()
 sys.setrecursionlimit(10000)
 
@@ -43,6 +44,7 @@ parameters["form_compiler"]["optimize"]     = True
 parameters["form_compiler"]["cpp_optimize"] = True
 parameters['form_compiler']['representation'] = 'uflacs'
 parameters['form_compiler']['quadrature_degree'] = 12
+#solver = NewtonSolver('mumps')
 
 #actual turbine diam in meters
 RD = 80.
@@ -65,6 +67,7 @@ A=RD # weird for 2D  ### WHAT's this actually? - area b/c it's got no z?
 HH=80    
 initExtent=.95 ### create buffer on grid layout
 mlDenom=2. ### mixing length denom - not sure how this is arrived at
+rad2 = 4. * RD
 
 #Ct = 0.75
 Ct = 8./9. #limit for testing
@@ -74,18 +77,19 @@ Cp = 16./27. #betz limit for testing
 site_x = 15.*RD ###size of farm
 site_y = 15.*RD ###size of farm
 
+adaptive_meshing = True
 ###only one of these should be true to work
 restart = False ###seeded layout (must go into layout function to change seed)
 randStart = False ###random layout
-gridStart = False ###gridded layout - must have 16 turbines
+gridStart = True ###gridded layout - must have 16 turbines
 linearStart = False ###turbines in a row
 offgridStart = False
 test_turb = False
 old_good = False ### previous good layout
-coloradoStart = True
+coloradoStart = False
 if old_good == True:
     site_x = 30. * RD
-    sity_y = 30. * RD
+    site_y = 30. * RD
     Lx = 120. * RD
     Ly = 120. * RD
     numturbs = 18
@@ -97,14 +101,14 @@ elif coloradoStart == True:
     RD = 77.
     radius = RD / 2.
     site_x = 250. * RD
-    sity_y = 250. * RD
+    site_y = 250. * RD
     Lx = 500. * RD
     Ly = 500. * RD
     numturbs = 37
 else:
     numturbs = 10
 
-heat_output = True
+heat_output = False
 optimize = False ###
 checkpts = False #creates plots of turbine movement throughout optimization
 '''only for adjoint method'''
@@ -126,18 +130,26 @@ for i in dirs:
 def WTGdist(x,y): ###smoothing kernel
     return np.exp(-((x/thickness)**WTGexp + (y/radius)**WTGexp))
 
-def refine_mesh(mesh, site_x, site_y, HH):
+def refine_mesh(mesh, site_x, site_y, refine_where, mx, my, mz, ma, rad2):
     #refines the mesh around the site boundaries
     h = mesh.hmin()
-    
+    #cell_ct = 0.
     cell_f = CellFunction('bool', mesh, False) ### create a mesh of the same size, where every cell is set to 'False'
-    for cell in cells(mesh):
-        if (cell.midpoint()[0]**2 + cell.midpoint()[1]**2 < site_x**2 + site_y**2 + h) :
-            cell_f[cell] = True
-            ###if the midpoint of the cell is within the circumradius of the farm, change the cell's value to true
-
+    if refine_where == 'farm':
+        for cell in cells(mesh):
+            #cell_ct += 1
+            if (cell.midpoint()[0]**2 + cell.midpoint()[1]**2 < site_x**2 + site_y**2 + h) :
+                cell_f[cell] = True
+                ###if the midpoint of the cell is within the circumradius of the farm, change the cell's value to true
+    else:
+        for cell in cells(mesh): #cycle through each cell
+            #cell_ct += 1
+            for i in range(numturbs): #cycle through each turbine
+                if (pow(cell.midpoint()[0] - mx[i],2) + pow(cell.midpoint()[1] - my[i],2) < pow(rad2,2) + h) :
+                    cell_f[cell] = True
+                    ###if the midpoint of the cell is within a radius of a turbine
     mesh = refine(mesh, cell_f) ###refine the cells within the circumradius of the farm
-
+    #print('mesh cell count: ',cell_ct)
     return mesh
 
 def createLayout(numturbs):
@@ -154,17 +166,33 @@ def createLayout(numturbs):
         #my = [i*spacing for i in range(numturbs)]
 
     ###if you've specified a random starting array
-    if randStart == True:
-        for i in range(numturbs):
-            ### select a random x location, within the farm bounds, and such that the entire rotor will be within the farm bounds
-            #mx.append(Constant(np.random.uniform(low=-(site_x - radius),high=(site_x - radius))))
-            mx.append(np.random.uniform(low=-(site_x - radius),high=(site_x - radius)))
-            ### select a random y location, within the farm bounds, and such that the entire rotor will be within the farm bounds
-            #my.append(Constant(np.random.uniform(low=-(site_y - radius), high=(site_y - radius))))
-            my.append(np.random.uniform(low=-(site_y - radius), high=(site_y - radius)))
-            ### single hub height, z = HH
-            #mz.append(Constant(HH))
-            mz.append(HH)
+    if randStart == True: #DOESN'T CURRENTLY TAKE 200m CONSTRAINT
+        mx = [0.] * numturbs
+        my = [0.] * numturbs
+        mz = [HH] * numturbs
+        checkout = False
+        while checkout == False:
+            for i in range(numturbs):
+                checkx = 0
+                reset = 0
+                checkout = False
+                while reset < 5000 and checkx == 0:
+                    mx[i] = (np.random.uniform(low=-(site_x - radius),high=(site_x - radius)))
+                    my[i] = (np.random.uniform(low=-(site_y - radius), high=(site_y - radius)))
+                    check2 = Check_Interference(mx, my, i)
+                    if check2 == 0.:
+                        checkx = 1
+                    else: #if there's interference
+                        mx[i] = 0.
+                        my[i] = 0.
+                if reset == 50000:
+                        print('resetting')
+                        mx = [0.] *numturbs
+                        my = [0.] *numturbs
+                        checkout = False
+                        break #reset total loop
+                else:
+                    checkout = True
     elif gridStart == True:
         ###if you've specified a grided starting array 
         ###Can only accept 16 turbines
@@ -232,7 +260,7 @@ def createLayout(numturbs):
 
     return mx, my, mz
 
-def createRotatedTurbineForce(mx,my,ma,A,beta,numturbs,alpha,V):
+def createRotatedTurbineForce(mx,my,ma,A,beta,numturbs,alpha,V,mesh):
     #mx, my = x, y coordinates of each turbine
     #ma = vector of value 0.33 for each turbine - axial induction factor
     # A = RD at beginning of code. Maybe area since we're using 2D...
@@ -270,7 +298,7 @@ def createRotatedTurbineForce(mx,my,ma,A,beta,numturbs,alpha,V):
         plt.savefig('final_tf.png', bbox_inches='tight')
     return tf
 
-def rotatedPowerFunctional(alpha,A,beta,mx,my,ma,u,numturbs,V):
+def rotatedPowerFunctional(alpha,A,beta,mx,my,ma,u,numturbs,V,mesh):
     ### used only in optimization
     # functional for dolfin-adjoint
     x=SpatialCoordinate(mesh)
@@ -284,7 +312,7 @@ def rotatedPowerFunctional(alpha,A,beta,mx,my,ma,u,numturbs,V):
         J = J + 0.5*np.pi*radius**2*Cp/((1.-ma[i]) ** 3)/beta*Functional(exp(-(((x[0] - xrot)/thickness)**WTGexp + ((x[1] - yrot)/radius)**WTGexp))*u[0]**3.*dx) ### /beta added by Annalise 12/13/17
     return J
 
-def rotatedPowerFunction(alpha,A,beta,mx,my,ma,up,numturbs,V, heat = False):
+def rotatedPowerFunction(alpha,A,beta,mx,my,ma,up,numturbs,V, mesh, heat = False):
     ### used in developing final power
     #emulating an actual power curve
     x=SpatialCoordinate(mesh)
@@ -386,7 +414,7 @@ def splitSolution(m_opt,numturbs):
         
     return mx_opt,my_opt
 
-def main(tf, wind_case):
+def main(tf, wind_case, VQ):
     nu = Constant(.00005) ### kinematic viscosity
     f = Constant((0.,0.))
     up_next = Function(VQ) ### up_next becomes tuple of vector and finite elements for wind speed and pressure
@@ -436,7 +464,7 @@ def main(tf, wind_case):
     S = sqrt(2.*inner(0.5*(grad(u_next)+grad(u_next).T),0.5*(grad(u_next)+grad(u_next).T)))
     nu_T=lmix**2.*S ### eddie viscosity
 
-    F = inner(grad(u_next)*u_next, v)*dx + (nu+nu_T)*inner(grad(u_next), grad(v))*dx - inner(div(v),p_next)*dx - inner(div(u_next),q)*dx - inner(f,v)*dx + inner(tf*u_next[0]**2,v)*dx 
+    F = inner(grad(u_next)*u_next, v)*dx + (nu+nu_T)*inner(grad(u_next), grad(v))*dx - inner(div(v),p_next)*dx - inner(div(u_next),q)*dx - inner(f,v)*dx + inner(tf*u_next[0]**2,v)*dx
     ### u_next[0] ** 2 because it's not added to the force on f_AD calc?
     ### I think this is ok without density --> http://libelemental.org/featured/2011/pdesys.html
     
@@ -452,29 +480,35 @@ def main(tf, wind_case):
 
     bc = [bc1a,bc2]
 
-    solve(F == 0, up_next, bc, solver_parameters={"newton_solver":{"absolute_tolerance": 1e-8}})
+    #problem = NonlinearVariationalProblem(Constant(0), F, up_next, bc)
+    #solver = NonlinearVariationalSolver(problem)
+    #solver.parameters['nonlinear_solver'] = 'newton'
+    #solver.parameters['newton_solver']['linear_solver'] = 'mumps'
+    #solver.solve()
+    solve(F == 0, up_next, bc, solver_parameters={"newton_solver":{'linear_solver': "mumps"},"newton_solver":{"absolute_tolerance": 1e-8},"newton_solver":{"maximum_iterations": 30}})
     u_next,p_next = split(up_next)
     #print('u_next: ', up_next.sub(0)(-Lx/2 + 0.000005,-Ly/2 + 0.000005)[0])
-    if optimize == False:
-        nu_T_out=project(nu_T, Q)
-        lStr= 'nu_t.pvd'
-        file = File(lStr)
-        file << nu_T_out
+    #if optimize == False:
+    #    nu_T_out=project(nu_T, Q)
+    #    lStr= 'nu_t.pvd'
+    #    file = File(lStr)
+    #    file << nu_T_out
     return u_next, up_next
 ###############################################################################
-def Eval_Objective(mx,my,ma,A,B,numturb,heat = False):
+def Eval_Objective(mx,my,mz,ma,A,B,numturb,heat = False):
     global tot_evals
     tot_evals += 1
     start = time()
     J = 0.
     cumulative_power = [0.] * numturbs
     for i in range(bins * len(windsp)): ###for each wind direction
-        tf_rot= createRotatedTurbineForce(mx,my,ma,A,B,numturbs,wind_cases[i][0],V) ### calculate force imparted by turbines
-        u_rot, up_rot = main(tf_rot, i)  ### RANS solver
+        V,Q,VQ,mesh = create_mesh(mx,my,mz,ma, rad2)
+        tf_rot= createRotatedTurbineForce(mx,my,ma,A,B,numturbs,wind_cases[i][0],V,mesh) ### calculate force imparted by turbines
+        u_rot, up_rot = main(tf_rot, i, VQ)  ### RANS solver
         if heat == True and i == 0: #only calc heat for wind from left
-            power_dev,heat_out = rotatedPowerFunction(wind_cases[i][0],A,beta,mx,my,ma,up_rot,numturbs,V, True)
+            power_dev,heat_out = rotatedPowerFunction(wind_cases[i][0],A,beta,mx,my,ma,up_rot,numturbs,V, mesh,True)
         else:
-            power_dev = rotatedPowerFunction(wind_cases[i][0],A,beta,mx,my,ma,up_rot,numturbs,V)
+            power_dev = rotatedPowerFunction(wind_cases[i][0],A,beta,mx,my,ma,up_rot,numturbs,V,mesh)
         J = J - weights[i]*sum(power_dev)
         cumulative_power = [k*weights[i]+j for k,j in zip(power_dev,cumulative_power)]
         print('time to evaluate bin: ', time() - start)
@@ -550,7 +584,7 @@ def EPS(mx, my, mz, ma):
     while os.path.isdir('trial_'+str(enum)):
         enum += 1
     directory = 'trial_'+str(enum)
-    objective, turb_power = Eval_Objective(mx,my,ma,A,B,numturbs)
+    objective, turb_power = Eval_Objective(mx,my,mz,ma,A,B,numturbs)
     #objective = nomove * 1.
     for h in range(0, 1):
         step2 = init_step
@@ -565,7 +599,7 @@ def EPS(mx, my, mz, ma):
                 flag = 0
                 innerflag = 0
                 transflag = 0
-                #nomove, turb_power = Eval_Objective(mx,my,ma,A,B,numturbs)
+                #nomove, turb_power = Eval_Objective(mx,my,mz,ma,A,B,numturbs)
                 #develop preliminary objective for comparison purposes                
                 #if my[i] >= 0.: #If commented out, Don't adjust pattern order based on position in field
                 if innerflag == 0 and flag == 0:        #move 1 was just unsucessfully attempted
@@ -587,7 +621,7 @@ def EPS(mx, my, mz, ma):
                             innerflag = 1
                             print('turbine not moved up. Layout already attempted')
                         else:       #if there is no interference, evaluate and store
-                            move2, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
+                            move2, turb_power2 = Eval_Objective(mx,my,mz,ma,A,B,numturbs)
 
                             if move2 >= objective:       #if evaluation is worse than initial, move back, go to next translation
                                 my, transflag = Translation_Y(-step2, i, my)
@@ -619,7 +653,7 @@ def EPS(mx, my, mz, ma):
                             innerflag = 2
                             print('turbine not moved left. Layout already attempted')
                         else:       #if there is no interference, evaluate and store
-                            move3, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
+                            move3, turb_power2 = Eval_Objective(mx,my,mz,ma,A,B,numturbs)
 
                             if move3 >= objective:       #if evaluation is worse than initial, move back, go to next translation
                                 mx, transflag = Translation_X(step2, i, mx)
@@ -651,7 +685,7 @@ def EPS(mx, my, mz, ma):
                             innerflag = 3
                             print('turbine not moved down. Layout already attempted')
                         else:       #if there is no interference, evaluate and store
-                            move4, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
+                            move4, turb_power2 = Eval_Objective(mx,my,mz,ma,A,B,numturbs)
 
                             if move4 >= objective:       #if evaluation is worse than initial, move back, go to next translation
                                 my, transflag = Translation_Y(step2, i, my)
@@ -683,7 +717,7 @@ def EPS(mx, my, mz, ma):
                             innerflag = 4
                             print('turbine not moved left. Layout already attempted')
                         else:       #if there is no interference, evaluate and store
-                            move1, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
+                            move1, turb_power2 = Eval_Objective(mx,my,mz,ma,A,B,numturbs)
 
                             if move1 >= objective:             #if evaluation is worse than initial, move back, go to next translation
                                 mx, transflag = Translation_X(-step2, i, mx)
@@ -718,7 +752,7 @@ def EPS(mx, my, mz, ma):
                             min_turb = randorder
                                 
                     print('The weakest turbine is turbine ', min_turb, ' with power currently at ', min_power)
-                    #start_eval, turb_power = Eval_Objective(mx,my,ma,A,B,numturb)
+                    #start_eval, turb_power = Eval_Objective(mx,my,mz,ma,A,B,numturb)
 
                     initialx = mx[min_turb]
                     initialy = my[min_turb]
@@ -741,7 +775,7 @@ def EPS(mx, my, mz, ma):
                                 my[min_turb] = initialy
                                 print('Turbine cannot be relocated without interference, trying agian.')
                             
-                        new_eval, turb_power2 = Eval_Objective(mx,my,ma,A,B,numturbs)
+                        new_eval, turb_power2 = Eval_Objective(mx,my,mz,ma,A,B,numturbs)
                         if new_eval < objective:
                             flag = 1
                             turb_power = [w for w in turb_power2]
@@ -811,23 +845,47 @@ def print_graph(all_x,all_y,i, directory):
 alpha = dirs[0]
 eval_num = 0
 #domain centered on (0,0)
-mesh = RectangleMesh(Point(-Lx/2., -Ly/2.), Point(Lx/2., Ly/2.), numx, numy)
-
-h = mesh.hmin()
-
-'''refine mesh twice in circumradius of farm'''
-for nums in range(numRefine):
-    # print 'refining mesh'
-    mesh=refine_mesh(mesh, site_x, site_y, HH)
+def create_mesh(mx,my,mz,ma,rad2):
+    mesh = RectangleMesh(Point(-Lx/2., -Ly/2.), Point(Lx/2., Ly/2.), numx, numy)
+    
     h = mesh.hmin()
-
-'''WHAT'S HAPPENING HERE?! - somehow setting up the mesh to store the values we need?'''
-# function spaces, mixed function space syntax not backwards compatible
-V = VectorElement('Lagrange', mesh.ufl_cell(), 2) 
-Q = FiniteElement('Lagrange', mesh.ufl_cell(), 1)
-VQ = FunctionSpace(mesh, MixedElement([V,Q]))   #NSE equations
-V = VectorFunctionSpace(mesh, 'Lagrange', 2)
-Q = FunctionSpace(mesh, 'Lagrange', 1)
+    
+    '''refine mesh twice in circumradius of farm'''
+    for nums in range(numRefine):
+        # print 'refining mesh'
+        mesh=refine_mesh(mesh, site_x, site_y, 'farm', mx, my, mz, ma, rad2)
+        h = mesh.hmin()
+    mesh1 = []
+    for each in mesh.coordinates():
+        if abs(each[0]) < site_x and abs(each[1]) < site_y:
+            mesh1.append((float(each[0]),float(each[1])))
+    if adaptive_meshing == True:
+        mesh=refine_mesh(mesh, site_x, site_y, 'turbines', mx, my, mz, ma, rad2)
+        h = mesh.hmin()
+    meshx2 = []
+    meshy2 = []
+    for each in mesh.coordinates():
+        if abs(each[0]) < site_x and abs(each[1]) < site_y and ((each[0],each[1]) not in mesh1):
+            meshx2.append(float(each[0]))
+            meshy2.append(float(each[1]))
+            #print(meshx)
+    print('mesh size: ',len(meshx2) + len(mesh1))
+    plt.figure()
+    #print(meshx2)
+    plt.scatter([iii[0] for iii in mesh1],[iii[1] for iii in mesh1],s = 1,c='k')
+    plt.scatter(meshx2,meshy2,s = 1,c='r')
+    #plt.scatter(mx,my,color = 'r', marker='*')
+    plt.savefig('mesh_vis.png')
+    print('end meshing')
+    
+    '''WHAT'S HAPPENING HERE?! - somehow setting up the mesh to store the values we need?'''
+    # function spaces, mixed function space syntax not backwards compatible
+    V = VectorElement('Lagrange', mesh.ufl_cell(), 2) 
+    Q = FiniteElement('Lagrange', mesh.ufl_cell(), 1)
+    VQ = FunctionSpace(mesh, MixedElement([V,Q]))   #NSE equations
+    V = VectorFunctionSpace(mesh, 'Lagrange', 2)
+    Q = FunctionSpace(mesh, 'Lagrange', 1)
+    return V,Q,VQ,mesh
 
 
 
@@ -854,7 +912,7 @@ if __name__ == "__main__":
         for i in range(bins): ###for each wind direction
             tf_rot= createRotatedTurbineForce(mx,my,ma,A,B,numturbs,dirs[i],V) ### calculate force imparted by turbines
             u_rot, p_rot = main(tf_rot)  ### RANS solver
-            J = J + weights[i]*rotatedPowerFunctional(dirs[i],A,B,mx,my,ma,u_rot,numturbs,V)
+            J = J + weights[i]*rotatedPowerFunctional(dirs[i],A,B,mx,my,ma,u_rot,numturbs,V,mesh)
 
         # position control variables
         m=createControl(mx,my,numturbs)
@@ -881,7 +939,8 @@ if __name__ == "__main__":
         my_opt = [i for i in my]
         mz_opt = [i for i in mz]
     if heat_output == True:
-        Jfunc,cum_power,heat_out = Eval_Objective(mx_opt,my_opt,ma,A,B,numturbs,True)
+        Jfunc,cum_power,heat_out = Eval_Objective(mx_opt,my_opt,mz_opt,ma,A,B,numturbs,True)
+        plt.figure()
         plt.imshow(heat_out[0], cmap='hot', interpolation='nearest', extent=heat_out[1])
         plt.colorbar()
         nx = [cos(dirs[0])*mx[i] - sin(dirs[0])*my[i] for i in range(numturbs)]
@@ -894,7 +953,7 @@ if __name__ == "__main__":
         plt.ylabel('Downwind Distance (m)')
         plt.savefig('heat_out_'+str(now.month)+'_'+str(now.day)+'_'+str(now.hour)+'_'+str(now.minute)+'.png', bbox_inches='tight')
     else:
-        Jfunc,cum_power = Eval_Objective(mx_opt,my_opt,ma,A,B,numturbs)
+        Jfunc,cum_power = Eval_Objective(mx_opt,my_opt,mz_opt,ma,A,B,numturbs)
     '''
     tf_rot_opt= createRotatedTurbineForce(mx_opt,my_opt,ma,A,B,numturbs,dirs[0],V)
     tf_rot_opt_out = project(tf_rot_opt, V)

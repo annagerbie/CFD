@@ -19,7 +19,7 @@ import sys
 #import csv
 import matplotlib.pyplot as plt
 import os
-
+plt.switch_backend('agg')
 sys.getrecursionlimit()
 sys.setrecursionlimit(10000)
 
@@ -51,9 +51,15 @@ parameters["form_compiler"]["cpp_optimize"] = True
 parameters['form_compiler']['representation'] = 'uflacs'
 parameters['form_compiler']['quadrature_degree'] = 12
 parameters['linear_algebra_backend'] = "PETSc"
+parameters["mesh_partitioner"] = "SCOTCH"
 #solver.parameters.linear_solver = "gmres"
-list_linear_solver_methods()
-print(parameters.linear_algebra_backend)
+
+comm = mpi_comm_world()
+mpiRank = MPI.rank(comm)
+print('test')
+print('MPI PROCESS RANK ', mpiRank)
+#list_linear_solver_methods()
+#print(parameters.linear_algebra_backend)
 #print(solver.linear_solver_method)
 #parameters['linear_solver_method'] = 'PETSc'
 
@@ -94,12 +100,12 @@ site_y = 950. ###size of farm
 
 ###only one of these should be true to work
 restart = False ###seeded layout (must go into layout function to change seed)
-randStart = True ###random layout
+randStart = False ###random layout
 gridStart = False ###gridded layout - must have 16 turbines
 linearStart = False ###turbines in a row
 offgridStart = False
 test_turb = False
-old_good = False ### previous good layout
+old_good = True ### previous good layout
 coloradoStart = False
 if old_good == True:
     site_x = 30. * RD
@@ -122,7 +128,9 @@ elif coloradoStart == True:
 else:
     numturbs = 30
 
-heat_output = False
+adaptive_meshing = True
+heat_output = True
+print_mesh = True
 optimize = False ###
 checkpts = False #creates plots of turbine movement throughout optimization
 '''only for adjoint method'''
@@ -911,7 +919,26 @@ def create_mesh(mx,my,mz,ma,rad2):
         # print 'refining mesh'
         mesh=refine_mesh(mesh, site_x, site_y, 'farm', mx, my, mz, ma, rad2)
         h = mesh.hmin()
-    mesh=refine_mesh(mesh, site_x, site_y, 'turbines', mx, my, mz, ma, rad2)
+    if print_mesh == True:
+        mesh1 = []
+        for each in mesh.coordinates():
+            if abs(each[0]) < site_x and abs(each[1]) < site_y:
+                mesh1.append((float(each[0]),float(each[1])))
+    if adaptive_meshing == True:
+        mesh=refine_mesh(mesh, site_x, site_y, 'turbines', mx, my, mz, ma, rad2)
+    if print_mesh == True:
+        meshx2 = []
+        meshy2 = []
+        for each in mesh.coordinates():
+            if abs(each[0]) < site_x and abs(each[1]) < site_y and ((each[0],each[1]) not in mesh1):
+                meshx2.append(float(each[0]))
+                meshy2.append(float(each[1]))
+        plt.figure()
+        #print(meshx2)
+        plt.scatter([iii[0] for iii in mesh1],[iii[1] for iii in mesh1],s = 1,c='k')
+        plt.scatter(meshx2,meshy2,s = 1,c='r')
+        #plt.scatter(mx,my,color = 'r', marker='*')
+        plt.savefig('mesh_vis_discEPS.png')
     print('mesh size: ',len(mesh.coordinates()))
     h = mesh.hmin()
     
@@ -944,6 +971,11 @@ if __name__ == "__main__":
         start_time = time()
         mx_opt,my_opt,mz_opt = EPS(mx, my, mz, ma)
         analysis_time = time() - start_time
+        #def iter_cb(m):
+        #    if MPI.rank(mpi_comm_world()) == 0:
+        #        print("m = ")
+        #        for mm in m:
+        #            print("Constant("+ str(mm)+ "),")
         '''
         # power functional
         J = Functional(0.) ### what is this??? - data structure type
@@ -958,11 +990,7 @@ if __name__ == "__main__":
 
         rf = ReducedFunctional(J,m)
 
-        def iter_cb(m):
-            if MPI.rank(mpi_comm_world()) == 0:
-                print("m = ")
-                for mm in m:
-                    print("Constant("+ str(mm)+ "),")
+        
         ### DOES THIS NOT USE ADJOINT? SEEMS LIKE BFGS -- see last page of journal article
         
         m_opt = maximize(rf, method="L-BFGS-B", options = {"disp": True}, bounds = bounds, callback = iter_cb)
@@ -979,6 +1007,7 @@ if __name__ == "__main__":
     #print('evaluating')
     if heat_output == True:
         Jfunc,cum_power,heat_out = Eval_Objective(mx_opt,my_opt,mz_opt,ma,A,B,numturbs,True)
+        plt.figure()
         plt.imshow(heat_out[0], cmap='hot', interpolation='nearest', extent=heat_out[1])
         plt.colorbar()
         nx = [cos(dirs[0])*mx[i] - sin(dirs[0])*my[i] for i in range(numturbs)]

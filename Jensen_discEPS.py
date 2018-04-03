@@ -15,11 +15,12 @@ import numpy as np
 from time import time
 nemo = 1
 
-init_step = 400.0           #Step Size for translation, in m
+init_step = 10. #number of starting mesh intervals
+mesh_width = 200. #meters - width of mesh
 #area = 2000.0              #Length of one side of solution area, in m
 
-site_x = 250. * 80.             #Length of one side of solution area, in m  
-site_y = 250. * 80.              #Length of one side of solution area, in m  
+site_x = 1999.             #Length of one side of solution area, in m  
+site_y = 1999.              #Length of one side of solution area, in m  
 XLength = site_x * 1.2             #Length of one side of solution area, in m
 YLength = site_y * 1.2               #Length of one side of solution area, in m
 U0 = [8.0]      #mean wind speed, in m/s
@@ -66,7 +67,7 @@ WCOE = 0.1                  #wholdsale cost of electricity, in $/kWh
 yrs = 20.0
 
 output = 'off'
-nwp = True
+nwp = False
 #ma = 0.33
 Cp = 16./27. #for testing
 #Cp = 0.34
@@ -123,7 +124,7 @@ elif condition == "UNSTABLE":
     BPow = -0.1352
     alphah = 0.08
  
-layout_type = 'colorado'
+layout_type = 'random'
 
 if layout_type == 'test':
     YLocation = [[0.], [200.], [200.]]
@@ -366,14 +367,12 @@ def Initial_Layout():
             xmove = 0
             ymove = 0
             CHECK2 = 0
-
-            random_X = random.uniform(0, site_x)
-            xmove = random_X
+            x_opts = int(site_x / mesh_width) + 1
+            y_opts = int(site_y / mesh_width) + 1
+            xmove = int(random.uniform(0, x_opts)) * mesh_width
+            ymove = int(random.uniform(0, y_opts)) * mesh_width
             #print('xmove = ', xmove)
             Translation_X(xmove, n, directions)
-            #print(turbines[n].XLocation)
-            random_Y = random.uniform(0, site_y)
-            ymove = random_Y
             #print('ymove = ', ymove)
             Translation_Y(ymove, n, directions)
             #print(turbines[n].YLocation)
@@ -396,7 +395,10 @@ def Initial_Layout():
                     turbines[l].XLocation[j] = 0.
                     turbines[l].YLocation[j] = 0.
             return reset
-
+    print('XLocation')
+    print([i.XLocation[0] for i in turbines])
+    print('YLocation')
+    print([i.YLocation[0] for i in turbines])
     return reset
 
     
@@ -414,6 +416,8 @@ def Check_Interference(n):
             checky = y - ynew
             checkrad = np.sqrt(checkx ** 2.0 + checky ** 2.0)
             if checkrad < 200:
+                if checkrad > 0.:
+                    print('failed interference: ',checkrad)
                 CHECK2 = 1
     return CHECK2
 
@@ -466,12 +470,13 @@ def check_layout(mx,my):
             #print('new layout: ',new_layout)
             layouts_file.write(str(new_layout)+'\n')
     else:
-        print('layout previously checked')
+        pass
+        #print('layout previously checked')
         
     return has_been
 ################################################################################################################
 def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
-    
+    #lastj = 12
     for j in range(0, initial_num): #downstream turbine
         upstrm = []   
         distanceus = []
@@ -494,7 +499,7 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                     x = turbines[i].XLocation[direction]
                     dis = YLength - y                          #Sets dis to max downstream distance
                     Rr = turbines[i].RotorRad
-                    r1 = (alpha * dis) + Rr                 #Calculate maximum ds wake radius
+                    r1 = (alpha * dis) + Rr #Calculate maximum ds wake radius
                     space1 = x + r1
                     space2 = x - r1
                     
@@ -516,6 +521,11 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
             distanceus.append(disty)
             wakewidthds.append(wake_d)
         turbines[j].usturbines = [this for this in upstrm]
+        #print('turbine j: ',j)
+        #print(turbines[j].usturbines)
+        #print('turbine: ',lastj)
+        #print(turbines[lastj].usturbines)
+        #lastj = j*1
         turbines[j].wakewidth = [this for this in wakewidthds]
         turbines[j].distance = [this for this in distanceus]
         
@@ -645,10 +655,13 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
         turbines[i].percent = complete_percent
 #Code Check
 #Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif)                   
+                  
+    #calculate wind speed for each downstream turbine based on downstream distance
     sorted_order = [(jj,ii.YLocation[0]) for jj,ii in enumerate(turbines)]
     sorted_order = sorted(sorted_order, key=lambda x: x[1])
-    sorted_order = [ii[0] for ii in sorted_order]              
-    #calculate wind speed for each downstream turbine based on downstream distance
+    sorted_order = [ii[0] for ii in sorted_order]
+    #print('sorted order')
+    #print(sorted_order)
     for k in sorted_order:
         wdsp = []
         for u0i in range(0, len(U0)):
@@ -720,14 +733,6 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                             rt2 = abs(zhubturb - zhubc)        #height of the triangular portion of the chord area in z
                             rt1 = abs(xturb - xc)              #height of the triangluar portion of the chord area in x
                             space = np.sqrt((rt2 ** 2) + (rt1 ** 2))      #distance between wake center and discritized point
-                            '''
-                            if k == 14:
-                                print(rt2)
-                                print(xturb)
-                                print(xc)
-                                print(rt1)
-                                print('space: ',space)
-                            '''
                             if space <= r2:        #if point is within wake
                                 Rr = turbines[k].RotorRad
                                 alpha = 0.5 / np.log(zval / z0)
@@ -768,13 +773,15 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                         #print("analyzing turbine: ",k)
                         #print('only reducing speed from turbine: ',usindex)
                         x = min(turbines[k].distance[wd])
+                        #print(x)
                         hubheight = turbines[k].HubHeight
                         alpha = (0.5 / np.log(hubheight / z0))
                         Rr = turbines[k].RotorRad
                         
                         #Grady Model 
-                        r1 = Rr * np.sqrt((1-aif) / (1 - 2*aif))
-                        EWU = turbines[usindex].ui[wd] * (1 - (2*aif)/((1+alpha*(x/r1))**(2)))
+                        r1 = Rr * np.sqrt((1.-aif) / (1. - 2.*aif))
+                        EWU = turbines[usindex].ui[wd] * (1 - (2.*aif)/((1.+alpha*(x/r1))**(2)))
+                        #print(EWU)
                         wdsp.append(EWU * ((hubheight / Zref) ** alphah))
                         
                     else: #no nested wake
@@ -870,22 +877,26 @@ def Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, 
     nemo += 1
 
     objective = 0.
+    tot_power = 0.
     for j in range(0, initial_num):
         for ws in range(0, len(probwui)):
-            objective -= turbines[j].Power[ws]
+            tot_power += turbines[j].Power[ws]
+            #objective -= turbines[j].Power[ws]
             #windspeeds += turbines[i].ui
+    objective = 50. / tot_power
+    #print(objective)
     return objective
 #####################################################################################################################
 def Clear_Vectors():
     for i in range(0, initial_num):
-        turbines[i].percent = []
-        turbines[i].distance = []
-        turbines[i].dsturbines = []
-        turbines[i].wakewidth = []
-        turbines[i].usturbines = []
+        turbines[i].percent = [[] for i in range(len(directions))]
+        turbines[i].distance = [[] for i in range(len(directions))]
+        turbines[i].dsturbines = [[] for i in range(len(directions))]
+        turbines[i].wakewidth = [[] for i in range(len(directions))]
+        turbines[i].usturbines = [[] for i in range(len(directions))]
         #turbines[i].dsturbinesrec[winddir] = []
         #turbines[i].usturbinesrec[winddir] = []
-        turbines[i].windspeeds = []
+        turbines[i].windspeeds = [[] for i in range(len(directions))]
 #######################################################################################################################
 def Rand_Vector(initial_num):
     random_vec = []
@@ -906,24 +917,39 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
         layouts_file.close()
         
     Clear_Vectors()
-    nomove = Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, aif)
+    #nomove = Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, aif)
 
     for h in range(0, 1):
-        #objective = Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, aif)
-
-        #print('objective eval: ', objective)
+        nomove = Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, aif)
+        #for ii,jj in enumerate(turbines):
+        #    print('turbine: ',ii)
+        #    print(jj.XLocation)
+        #    print(jj.YLocation)
+        #    print(jj.ui)
+        #    print(jj.usturbines)
+            
+        #print('objective eval: ', nomove)
         #print('h= ', h)
-        step2 = init_step
+        step2 = init_step * mesh_width
+        cter = 0
         while step2 >= minstep:
+            print(step2)
+            #print_graph()
             random_vec = Rand_Vector(initial_num)    #creates a randomly ordered vector of turbines
             for j in range(0, len(random_vec)):
+                # cter >= 32:
+                #    break
+                #cter += 1
                 i = random_vec[j]
                 turbines[i].Stopped = 0
-                #print('Turbine ', i,' is being tested.')
+                #print('Turbine ', i,' is being tested.', nomove)
+                #print(Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, aif))
                 flag = 0
                 innerflag = 0
                 transflag = 0
-                
+                ###comment out when finished debugging!!!
+                #step2 = minstep - 2.
+                #break
                 #develop preliminary objective for comparison purposes
                 
                 Clear_Vectors()
@@ -935,29 +961,29 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                     CHECK2 = 0
                     if transflag == 1:      #if the translation moved the turbine out of bounds, go to next translation
                         innerflag = 1       #move2 was attempted
-                        #print('turbine not moved up.')
+                        #print('turbine not moved up. out of bounds')
                     else:
                         CHECK2 = Check_Interference(i)
                         if CHECK2 == 1:         #if interference occurs, move the turbine back, go to next translation
                             Translation_Y(-step2, i, directions)
                             innerflag = 1
-                            #print('turbine not moved up.')
-                        elif check_layout([i.XLocation[0] for i in turbines],[i.YLocation[0] for i in turbines]) == True:
-                            Translation_Y(-step2, i, directions)
-                            innerflag = 1
-                            print('turbine not moved up. Layout already attempted')
+                            #print('turbine not moved up. interferenec')
+                        #elif check_layout([i.XLocation[0] for i in turbines],[i.YLocation[0] for i in turbines]) == True:
+                        #        Translation_Y(-step2, i, directions)
+                        #        innerflag = 1
+                        #        print('turbine not moved up. Layout already attempted')
                         else:       #if there is no interference, evaluate and store
                             move2 = Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, aif)
-
                             Clear_Vectors()
                             if move2 >= nomove:       #if evaluation is worse than initial, move back, go to next translation
                                 Translation_Y(-step2, i, directions)
                                 innerflag = 1
-                                #print('turbine not moved up.')
+                                #print('turbine not moved up. worse eval: ', move2)
                             else:       #evaluation is better, keep move, go to next turbine
                                 flag = 1
                                 nomove = move2 * 1.
                                 #print('turbine ', i, ' moved up.', move2)
+                                #print(nomove)
                                 #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
                             
                 if innerflag == 1 and flag == 0:        #move 2 was just unsucessfully attempted
@@ -965,17 +991,17 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                     CHECK2 = 0
                     if transflag == 1:      #if the translation moved the turbine out of bounds, go to next translation
                         innerflag = 2       #move3 was attempted
-                        #print('turbine not left.')
+                        #print('turbine not left. out of bounds')
                     else:
                         CHECK2 = Check_Interference(i)
                         if CHECK2 == 1:         #if interference occurs, move the turbine back, go to next translation
                             Translation_X(step2, i, directions)
                             innerflag = 2
-                            #print('turbine not left.')
-                        elif check_layout([i.XLocation[0] for i in turbines],[i.YLocation[0] for i in turbines]) == True:
-                            Translation_X(step2, i, directions)
-                            innerflag = 2
-                            print('turbine not moved up. Layout already attempted')
+                            #print('turbine not left. interferenec')
+                        #elif check_layout([i.XLocation[0] for i in turbines],[i.YLocation[0] for i in turbines]) == True:
+                        #    Translation_X(step2, i, directions)
+                        #    innerflag = 2
+                        #    print('turbine not moved up. Layout already attempted')
                         else:       #if there is no interference, evaluate and store
                             move3 = Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, aif)
 
@@ -983,11 +1009,12 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                             if move3 >= nomove:       #if evaluation is worse than initial, move back, go to next translation
                                 Translation_X(step2, i, directions)
                                 innerflag = 2
-                                #print('turbine not moved left.')
+                                #print('turbine not moved left. worse eval: ', move3)
                             else:       #evaluation is better, keep move, go to next turbine
                                 flag = 1
                                 nomove = move3 * 1.
                                 #print('turbine ', i, ' moved left.', move3)
+                                #print(nomove)
                                 #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
                             
                 if innerflag == 2 and flag == 0:        #move 3 was just unsucessfully attempted
@@ -995,28 +1022,28 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                     CHECK2 = 0
                     if transflag == 1:      #if the translation moved the turbine out of bounds, go to next translation
                         innerflag = 3       #move3 was attempted
-                        #print('turbine not moved down.')
+                        #print('turbine not moved down. out of bounds')
                     else:
                         CHECK2 = Check_Interference(i)
                         if CHECK2 == 1:         #if interference occurs, move the turbine back, go to next translation
                             Translation_Y(step2, i, directions)
                             innerflag = 3
-                            #print('turbine not moved down.')
-                        elif check_layout([i.XLocation[0] for i in turbines],[i.YLocation[0] for i in turbines]) == True:
-                            Translation_Y(step2, i, directions)
-                            innerflag = 3
-                            print('turbine not moved up. Layout already attempted')
+                            #print('turbine not moved down. interference')
+                        #elif check_layout([i.XLocation[0] for i in turbines],[i.YLocation[0] for i in turbines]) == True:
+                        #    Translation_Y(step2, i, directions)
+                        #    innerflag = 3
+                        #    print('turbine not moved up. Layout already attempted')
                         else:       #if there is no interference, evaluate and store
                             move4 = Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, aif)
-
                             Clear_Vectors()
                             if move4 >= nomove:       #if evaluation is worse than initial, move back, go to next translation
                                 Translation_Y(step2, i, directions)
                                 innerflag = 3
-                                #print('turbine not moved down.')
+                                #print('turbine not moved down. worse eval: ', move4)
                             else:       #evaluation is better, keep move, go to next turbine
                                 flag = 1
                                 nomove = move4 * 1.
+                                #print(nomove)
                                 #print('turbine ', i, ' moved down.', move4)
                                 #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
                 if innerflag == 3 and flag == 0:
@@ -1024,18 +1051,18 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                     CHECK2 = 0
                     if transflag == 1:          #if the translation moved the turbine out of bounds, go to next translation
                         innerflag = 4           #signifies move 1 was attempted
-                        #print('Turbine not moved right.')
+                        #print('Turbine not moved right. out of bounds')
                 
                     else:       #if there is the turbine is in bounds, evaluate and store
                         CHECK2 = Check_Interference(i)
                         if CHECK2 == 1:         #if interference occurs, move the turbine back , go to next translation
                             Translation_X(-step2, i, directions)
                             innerflag = 4
-                            #print('turbine not moved right')
-                        elif check_layout([i.XLocation[0] for i in turbines],[i.YLocation[0] for i in turbines]) == True:
-                            Translation_X(-step2, i, directions)
-                            innerflag = 4
-                            print('turbine not moved up. Layout already attempted')
+                            #print('turbine not moved right, interference')
+                        #elif check_layout([i.XLocation[0] for i in turbines],[i.YLocation[0] for i in turbines]) == True:
+                        #    Translation_X(-step2, i, directions)
+                        #    innerflag = 4
+                        #    print('turbine not moved up. Layout already attempted')
                         else:       #if there is no interference, evaluate and store
                             move1 = Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, aif)
 
@@ -1043,27 +1070,30 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                             if move1 >= nomove:             #if evaluation is worse than initial, move back, go to next translation
                                 Translation_X(-step2, i, directions)
                                 innerflag = 4
-                                #print('Turbine not moved right.')
+                                #print('Turbine not moved right. worse eval: ', move1)
                             else:
                                 flag = 1           #signifies movement was kept
                                 nomove = move1 * 1.
-                            #print('turbine ', i, ' moved right.', move1)
+                                #print('turbine ', i, ' moved right.', move1)
+                                #print(nomove)
                             #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
             
                 if innerflag == 4 and flag == 0:        #translation at this step size has resulted in no moves for this turbine
                     turbines[i].Stopped = 1
                     #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
-                   
+    
             exit_css = 0        #exit current step size
             for i in range(0, initial_num):
                 exit_css += turbines[i].Stopped
             #print(exit_css)
 
             if exit_css == initial_num:
+                #break   
+                #print_graph()
                 #all turbines have stopped moving at this step size, halving step size.
                 #find worst performing turbine and randomly assign elsewhere
+                #print("No moves at step size ", step2, " are possible. Popping weakest turbine.")
                 for b in range(0, num_pops):
-                    #print("No moves at step size ", step2, " are possible. Popping weakest turbine.")
                     min_power = 5000000.     #initialized to first turbine power output
                     random_vec2 = Rand_Vector(initial_num)    #creates a randomly ordered vector of turbines
                     for j in range(0, initial_num):
@@ -1087,19 +1117,17 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                         checkx = 0
                         while checkx != 1:      #will try random locations until one has no interference
                             CHECK2 = 0
-                            random_X = random.uniform(0, site_x)
-                            xmove = random_X
-                            turbines[min_turb].XLocation[0] = xmove
-                            random_Y = random.uniform(0, site_y)
-                            ymove = random_Y
-                            turbines[min_turb].YLocation[0] = ymove
+                            x_opts = int(site_x / mesh_width) + 1
+                            y_opts = int(site_y / mesh_width) + 1
+                            turbines[min_turb].XLocation[0] = int(random.uniform(0, x_opts)) * mesh_width
+                            turbines[min_turb].YLocation[0] = int(random.uniform(0, y_opts)) * mesh_width
                             CHECK2 = Check_Interference(min_turb)
                             if CHECK2 != 1:         #No interference
                                 checkx = 1          #place turbine and exit poping loop
                                 for j in range(1, len(directions)):
                                     theta = directions[j]
-                                    turbines[min_turb].XLocation[j] = (xmove* np.cos(theta)) - (ymove * np.sin(theta))
-                                    turbines[min_turb].YLocation[j] = (xmove * np.sin(theta)) + (ymove * np.cos(theta))
+                                    turbines[min_turb].XLocation[j] = (turbines[min_turb].XLocation[0]* np.cos(theta)) - (turbines[min_turb].YLocation[0] * np.sin(theta))
+                                    turbines[min_turb].YLocation[j] = (turbines[min_turb].XLocation[0] * np.sin(theta)) + (turbines[min_turb].YLocation[0] * np.cos(theta))
                                 #print('Turbine ', min_turb, ' has moved to a new location.')
                             else:
                                 turbines[min_turb].XLocation[0] = initialx
@@ -1114,7 +1142,8 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                             flag = 1
                             nomove = new_eval * 1. #keep eval
                             #HubHeight_Search(hstep, i, hstepmin, XLocation, YLocation, initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif)
-                            #print('Move has improved the evaluation. Continuing pattern serach.')
+                            #print('Move has improved the evaluation: ',new_eval)
+                            #print(nomove)
                         else:
                             turbines[min_turb].XLocation[0] = initialx
                             turbines[min_turb].YLocation[0] = initialy
@@ -1127,7 +1156,11 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
                         
                     #print('pops till acceptance= ', k)
                                 
-                step2 = step2 / 2.0
+                if init_step > 1. and init_step < 2.: #make sure it tries one mesh distance
+                    init_step = int(1)
+                else:
+                    init_step = int(init_step / 2.)
+                step2 = init_step * mesh_width
                 #print('step sized is being reduced to: ', step2)
                         
             #else:
@@ -1568,6 +1601,11 @@ def print_graph():
     plt.ylabel('Position (m)')
     plt.xlabel('Position (m)')
     plt.title(str('Optimization of ' + str(initial_num) + ' Turbines'))
+    xmax = int(np.ceil(site_x / mesh_width))
+    ymax = int(np.ceil(site_y / mesh_width))
+    plt.xticks([i*mesh_width for i in range(xmax)])
+    plt.yticks([i*mesh_width for i in range(ymax)])
+    plt.show()
     #plt.savefig(str(str(initial_num) + 'turbinesWithDisc.png'), bbox_inches='tight')
 #############################################################################################################
 #calculating distance between turbines
@@ -1779,8 +1817,8 @@ def plot_cables(networks):
         plt.xlabel('Position (m)')
         plt.title(str('Cable Layout for ' + str(initial_num) + ' Turbines'))
 ##########################################################################################################################
-hardcode = True
-rand_start = False
+hardcode = False
+rand_start = True
 inf_start = False
 
 if inf_start == True:
@@ -1796,7 +1834,7 @@ if output == 'on':
     excel = open('Jensen_out/Case2, BreifDatapt.txt', 'w') 
     excel.write(str('number of turbines, final evaluation, power output, efficiency, number of evaluations made, input file line number \n'))
 #i = 1
-#initial_num = 15
+initial_num = 30
 for line in range(0, num_lines):
     if inf_start == True:
         g = inf.readline()
@@ -1839,13 +1877,12 @@ for line in range(0, num_lines):
 
     #initialize turbines         
     turbines = [Turbine(XLocation[i], YLocation[i], ZLocation[i], HubHeight[i], RotorRad[i], alpha[i], usturbinesrec, usturbines, dsturbinesrec, dsturbines, wakewidth, distance, percent, ui, windspeeds, xcoords, zcoords, Power, Area) for i in range(0, initial_num)]        
-    
     if rand_start == True:
         #set turbine starting locations       
         reset = 50000.    
         while reset >= 50000.:        
             reset = Initial_Layout()
-            
+    print_graph()        
     if output == 'on':    
         #print("Initial X Locations: ", XLocation)
         #print('Initial Y Locations: ', YLocation)
@@ -1875,6 +1912,7 @@ for line in range(0, num_lines):
         start_time = time()
         Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, num_pops, max_pop_tries, hstep, i, hstepmin, rradmin, rradmax, rstep, hubmin, hubmax, rstepmin, aif, directions)
         total_time = time() - start_time
+        print_graph()
         print('time to run EPS: ',total_time)
         if output == 'on':
             XLocation = []

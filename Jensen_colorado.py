@@ -7,6 +7,7 @@ Created on Tue Aug  9 11:21:39 2016
 
 #import math
 import random
+import csv
 #import os
 import matplotlib.pyplot as plt
 import os
@@ -64,6 +65,7 @@ Zref = 80.0                 #Reference height for wind shear calculation, in m
 depth = 200.0               #water depth, 200m. User-defined in future
 WCOE = 0.1                  #wholdsale cost of electricity, in $/kWh
 yrs = 20.0
+initial_num = 37
 
 output = 'off'
 nwp = True
@@ -104,75 +106,102 @@ elif condition == "UNSTABLE":
     alphah = 0.08
  
 layout_type = 'colorado'
-
-if layout_type == 'test':
-    YLocation = [[0.], [200.], [200.]]
-    ZLocation = [[0.], [0.], [0.]]
-    initial_num = 3
-    spacing = 300.
-    XLocation = [[0.], [-spacing / 2.], [spacing / 2.]]
-    for i in range(len(XLocation)):
-        xfinish1 = [XLocation[i][0]]
-        yfinish1 = [YLocation[i][0]]
-        for k in range(1, len(directions)):
-            theta = directions[k]
-            newy = (xfinish1[0] * np.sin(theta)) + (yfinish1[0] * np.cos(theta))            #find preliminary new x-location given step size  
-            yfinish1.append(newy)
-            newx = (xfinish1[0] * np.cos(theta)) - (yfinish1[0] * np.sin(theta))    
-            xfinish1.append(newx)
-        YLocation[i] = yfinish1
-        XLocation[i] = xfinish1
-    
-if layout_type == 'grid':
-    initExtent = 0.95
-    rows = 4
-    cols = 4
-    xpos = np.linspace(-initExtent*(site_x - 40.),initExtent*(site_x - 40.),cols)
-    ypos = np.linspace(-initExtent*(site_y - 40.),initExtent*(site_y - 40.),rows)
-    #print('xlocations')
-    #print(xpos)
-    YLocation = []
-    XLocation = []
-    ZLocation = []
-    for i in range(rows):
-        for j in range(cols):
-            xfinish1 = [xpos[j]]
-            yfinish1 = [ypos[i]]
+def choose_layout(layout_type):
+    if layout_type == 'test':
+        YLocation = [[0.], [200.], [200.]]
+        ZLocation = [[0.], [0.], [0.]]
+        initial_num = 3
+        spacing = 300.
+        XLocation = [[0.], [-spacing / 2.], [spacing / 2.]]
+        for i in range(len(XLocation)):
+            xfinish1 = [XLocation[i][0]]
+            yfinish1 = [YLocation[i][0]]
             for k in range(1, len(directions)):
                 theta = directions[k]
-                newy = (xpos[j] * np.sin(theta)) + (ypos[i] * np.cos(theta))            #find preliminary new x-location given step size  
+                newy = (xfinish1[0] * np.sin(theta)) + (yfinish1[0] * np.cos(theta))            #find preliminary new x-location given step size  
                 yfinish1.append(newy)
-                newx = (xpos[j] * np.cos(theta)) - (ypos[i] * np.sin(theta))    
+                newx = (xfinish1[0] * np.cos(theta)) - (yfinish1[0] * np.sin(theta))    
                 xfinish1.append(newx)
-            YLocation.append(yfinish1)
-            XLocation.append(xfinish1)
-            # # some starting noise sometimes helps
-            # mx.append(Constant(xpos[j]+5.*np.random.randn()))
-            # my.append(Constant(ypos[i]+5.*np.random.randn()))
-            ZLocation.append(0.)
-    #title = 'Grid Layout'
-    initial_num = 16
-                
-elif layout_type == 'offset':
-    rows = 4
-    cols = 4
-    xpos = np.linspace(-initExtent*(site_x - 40.),initExtent*(site_x - 40.),cols)
-    ypos = np.linspace(-initExtent*(site_y - 40.),initExtent*(site_y - 40.),rows)
-    offset = ypos[1] - ypos[0]
-    xpos2 = []
-    for i in ypos:
-        xpos2.append(i + offset/2)
-    #print('xlocations')
-    #print(xpos)
-    YLocation = []
-    XLocation = []
-    for i in range(rows):
-        for j in range(cols):
-            if i % 2 != 0:
+            YLocation[i] = yfinish1
+            XLocation[i] = xfinish1
+        
+    if layout_type == 'grid':
+        initExtent = 0.95
+        rows = 4
+        cols = 4
+        xpos = np.linspace(-initExtent*(site_x - 40.),initExtent*(site_x - 40.),cols)
+        ypos = np.linspace(-initExtent*(site_y - 40.),initExtent*(site_y - 40.),rows)
+        #print('xlocations')
+        #print(xpos)
+        YLocation = []
+        XLocation = []
+        ZLocation = []
+        for i in range(rows):
+            for j in range(cols):
                 xfinish1 = [xpos[j]]
-            else:
-                xfinish1 = [xpos2[j]]
-            yfinish1 = [ypos[i]]
+                yfinish1 = [ypos[i]]
+                for k in range(1, len(directions)):
+                    theta = directions[k]
+                    newy = (xpos[j] * np.sin(theta)) + (ypos[i] * np.cos(theta))            #find preliminary new x-location given step size  
+                    yfinish1.append(newy)
+                    newx = (xpos[j] * np.cos(theta)) - (ypos[i] * np.sin(theta))    
+                    xfinish1.append(newx)
+                YLocation.append(yfinish1)
+                XLocation.append(xfinish1)
+                # # some starting noise sometimes helps
+                # mx.append(Constant(xpos[j]+5.*np.random.randn()))
+                # my.append(Constant(ypos[i]+5.*np.random.randn()))
+                ZLocation.append(0.)
+        #title = 'Grid Layout'
+        initial_num = 16
+                    
+    elif layout_type == 'offset':
+        rows = 4
+        cols = 4
+        xpos = np.linspace(-initExtent*(site_x - 40.),initExtent*(site_x - 40.),cols)
+        ypos = np.linspace(-initExtent*(site_y - 40.),initExtent*(site_y - 40.),rows)
+        offset = ypos[1] - ypos[0]
+        xpos2 = []
+        for i in ypos:
+            xpos2.append(i + offset/2)
+        #print('xlocations')
+        #print(xpos)
+        YLocation = []
+        XLocation = []
+        for i in range(rows):
+            for j in range(cols):
+                if i % 2 != 0:
+                    xfinish1 = [xpos[j]]
+                else:
+                    xfinish1 = [xpos2[j]]
+                yfinish1 = [ypos[i]]
+                for k in range(1, len(directions)):
+                    theta = directions[k]
+                    newy = (xfinish1[0] * np.sin(theta)) + (yfinish1[0] * np.cos(theta))            #find preliminary new x-location given step size  
+                    yfinish1.append(newy)
+                    newx = (xfinish1[0] * np.cos(theta)) - (yfinish1[0] * np.sin(theta))    
+                    xfinish1.append(newx)
+                YLocation.append(yfinish1)
+                XLocation.append(xfinish1)
+                # # some starting noise sometimes helps
+                # mx.append(Constant(xpos[j]+5.*np.random.randn()))
+                # my.append(Constant(ypos[i]+5.*np.random.randn()))
+                ZLocation.append(0.)
+        #title = 'Offset Grid Layout'
+        initial_num = 16
+    
+    elif layout_type == 'colorado':
+        colorado_x = [-6680.980411, -6549.425159, -6380.075027, -6197.64205, -6015.935896, -5834.229741, -3668.29226, -3799.847528, -3435.70836, -3230.016971, -6651.907427, -6455.664786, -6265.236739, -6075.535515, -5810.971353, -5660.518655, -5505.705008, -5284.750318, -5082.693066, -4877.728514, -4743.992777, -4621.159409, -4735.270881, -4497.599216, -3722.077287, -3590.522019, -3462.600873, -3332.499253, -3274.353278, -3082.471558, -2533.718907, -2334.568937, -2151.409109, -1912.283778, -1732.758073, -1599.022325, -1551.778718]
+        colorado_y = [-16892.41457, -16682.25616, -16486.55309, -16286.40222, -16109.60229, -15913.89922, -15251.17746, -15518.04528, -15084.38507, -14958.7348, -14737.4569, -14570.66451, -14410.54381, -14241.52752, -13962.42826, -13814.539, -13652.19441, -13447.59575, -13315.27378, -13175.16818, -12957.22612, -12707.03754, -11972.03907, -11891.97872, -11993.16611, -11794.12719, -11599.53607, -11399.3852, -11183.66704, -10937.92625, -10207.37558, -10036.1354, -9870.454957, -9691.431125, -9536.870177, -9323.375918, -9012.030123]
+        #colorado_x = [6680.980411, 6549.425159, 6380.075027, 6197.64205, 6015.935896, 5834.229741, 3668.29226, 3799.847528, 3435.70836, 3230.016971, 6651.907427, 6455.664786, 6265.236739, 6075.535515, 5810.971353, 5660.518655, 5505.705008, 5284.750318, 5082.693066, 4877.728514, 4743.992777, 4621.159409, 4735.270881, 4497.599216, 3722.077287, 3590.522019, 3462.600873, 3332.499253, 3274.353278, 3082.471558, 2533.718907, 2334.568937, 2151.409109, 1912.283778, 1732.758073, 1599.022325, 1551.778718]
+        #colorado_y = [16892.41457, 16682.25616, 16486.55309, 16286.40222, 16109.60229, 15913.89922, 15251.17746, 15518.04528, 15084.38507, 14958.7348, 14737.4569, 14570.66451, 14410.54381, 14241.52752, 13962.42826, 13814.539, 13652.19441, 13447.59575, 13315.27378, 13175.16818, 12957.22612, 12707.03754, 11972.03907, 11891.97872, 11993.16611, 11794.12719, 11599.53607, 11399.3852, 11183.66704, 10937.92625, 10207.37558, 10036.1354, 9870.454957, 9691.431125, 9536.870177, 9323.375918, 9012.030123]
+        initial_num = 37  
+        ZLocation = np.array([0.] * len(colorado_x))
+        YLocation = []
+        XLocation = []
+        for j in range(len(colorado_x)):
+            xfinish1 = [colorado_x[j]]
+            yfinish1 = [colorado_y[j]]
             for k in range(1, len(directions)):
                 theta = directions[k]
                 newy = (xfinish1[0] * np.sin(theta)) + (yfinish1[0] * np.cos(theta))            #find preliminary new x-location given step size  
@@ -181,74 +210,48 @@ elif layout_type == 'offset':
                 xfinish1.append(newx)
             YLocation.append(yfinish1)
             XLocation.append(xfinish1)
-            # # some starting noise sometimes helps
-            # mx.append(Constant(xpos[j]+5.*np.random.randn()))
-            # my.append(Constant(ypos[i]+5.*np.random.randn()))
-            ZLocation.append(0.)
-    #title = 'Offset Grid Layout'
-    initial_num = 16
-
-elif layout_type == 'colorado':
-    colorado_x = [-6680.980411, -6549.425159, -6380.075027, -6197.64205, -6015.935896, -5834.229741, -3668.29226, -3799.847528, -3435.70836, -3230.016971, -6651.907427, -6455.664786, -6265.236739, -6075.535515, -5810.971353, -5660.518655, -5505.705008, -5284.750318, -5082.693066, -4877.728514, -4743.992777, -4621.159409, -4735.270881, -4497.599216, -3722.077287, -3590.522019, -3462.600873, -3332.499253, -3274.353278, -3082.471558, -2533.718907, -2334.568937, -2151.409109, -1912.283778, -1732.758073, -1599.022325, -1551.778718]
-    colorado_y = [-16892.41457, -16682.25616, -16486.55309, -16286.40222, -16109.60229, -15913.89922, -15251.17746, -15518.04528, -15084.38507, -14958.7348, -14737.4569, -14570.66451, -14410.54381, -14241.52752, -13962.42826, -13814.539, -13652.19441, -13447.59575, -13315.27378, -13175.16818, -12957.22612, -12707.03754, -11972.03907, -11891.97872, -11993.16611, -11794.12719, -11599.53607, -11399.3852, -11183.66704, -10937.92625, -10207.37558, -10036.1354, -9870.454957, -9691.431125, -9536.870177, -9323.375918, -9012.030123]
-    #colorado_x = [6680.980411, 6549.425159, 6380.075027, 6197.64205, 6015.935896, 5834.229741, 3668.29226, 3799.847528, 3435.70836, 3230.016971, 6651.907427, 6455.664786, 6265.236739, 6075.535515, 5810.971353, 5660.518655, 5505.705008, 5284.750318, 5082.693066, 4877.728514, 4743.992777, 4621.159409, 4735.270881, 4497.599216, 3722.077287, 3590.522019, 3462.600873, 3332.499253, 3274.353278, 3082.471558, 2533.718907, 2334.568937, 2151.409109, 1912.283778, 1732.758073, 1599.022325, 1551.778718]
-    #colorado_y = [16892.41457, 16682.25616, 16486.55309, 16286.40222, 16109.60229, 15913.89922, 15251.17746, 15518.04528, 15084.38507, 14958.7348, 14737.4569, 14570.66451, 14410.54381, 14241.52752, 13962.42826, 13814.539, 13652.19441, 13447.59575, 13315.27378, 13175.16818, 12957.22612, 12707.03754, 11972.03907, 11891.97872, 11993.16611, 11794.12719, 11599.53607, 11399.3852, 11183.66704, 10937.92625, 10207.37558, 10036.1354, 9870.454957, 9691.431125, 9536.870177, 9323.375918, 9012.030123]
-    initial_num = 37  
-    ZLocation = np.array([0.] * len(colorado_x))
-    YLocation = []
-    XLocation = []
-    for j in range(len(colorado_x)):
-        xfinish1 = [colorado_x[j]]
-        yfinish1 = [colorado_y[j]]
-        for k in range(1, len(directions)):
-            theta = directions[k]
-            newy = (xfinish1[0] * np.sin(theta)) + (yfinish1[0] * np.cos(theta))            #find preliminary new x-location given step size  
-            yfinish1.append(newy)
-            newx = (xfinish1[0] * np.cos(theta)) - (yfinish1[0] * np.sin(theta))    
-            xfinish1.append(newx)
-        YLocation.append(yfinish1)
-        XLocation.append(xfinish1)
-    
-elif layout_type == 'linear':
-    '''My adds'''
-    ypos = np.linspace(-initExtent*(site_x - 40.),initExtent*(site_x - 40.),10)
-    xpos = np.array([0.] * 10)
-    ZLocation = np.array([0.] * 10)
-    YLocation = []
-    XLocation = []
-    for j in range(10):
-        xfinish1 = [xpos[j]]
-        yfinish1 = [ypos[j]]
-        for k in range(1, len(directions)):
-            theta = directions[k]
-            newy = (xfinish1[0] * np.sin(theta)) + (yfinish1[0] * np.cos(theta))            #find preliminary new x-location given step size  
-            yfinish1.append(newy)
-            newx = (xfinish1[0] * np.cos(theta)) - (yfinish1[0] * np.sin(theta))    
-            xfinish1.append(newx)
-        YLocation.append(yfinish1)
-        XLocation.append(xfinish1)
-    #title = 'Inline Layout'
-    initial_num = 10
-    
-elif layout_type == 'optimized':
-    xpos = [1304.2130491853543, 303.16195377176825, 1882.7665062612382, 734.1365122392898, 36.582152829805295, 1078.6666766839614, 1779.34556196998, 417.79552464946823, 1986.6903503041713, 133.48666173166612, 1430.1977444645, 954.8374274350235, 839.2773010244406, 1186.314920647951, 518.9482768461385, 1681.3296876680367, 621.3034610992612, 1567.283691418906]
-    ypos = [204.01944774702838, 270.02673301978496, 276.97611783621744, 305.2706459401636, 1065.3030786448571, 104.67022680498235, 610.6008734856377, 450.6469581295796, 32.94310546319856, 1290.6284216353858, 413.28638998844144, 611.4810784612052, 117.69510957163021, 489.9943326680768, 225.4370943493467, 858.4028566999443, 505.9650483803546, 1212.01937488221]
-    #title = 'Optimized Layout'
-    ZLocation = np.array([0.] * len(xpos))
-    YLocation = []
-    XLocation = []
-    for j in range(len(xpos)):
-        xfinish1 = [xpos[j]]
-        yfinish1 = [ypos[j]]
-        for k in range(1, len(directions)):
-            theta = directions[k]
-            newy = (xfinish1[0] * np.sin(theta)) + (yfinish1[0] * np.cos(theta))            #find preliminary new x-location given step size  
-            yfinish1.append(newy)
-            newx = (xfinish1[0] * np.cos(theta)) - (yfinish1[0] * np.sin(theta))    
-            xfinish1.append(newx)
-        YLocation.append(yfinish1)
-        XLocation.append(xfinish1)
-    initial_num = len(xpos)
+        
+    elif layout_type == 'linear':
+        '''My adds'''
+        ypos = np.linspace(-initExtent*(site_x - 40.),initExtent*(site_x - 40.),10)
+        xpos = np.array([0.] * 10)
+        ZLocation = np.array([0.] * 10)
+        YLocation = []
+        XLocation = []
+        for j in range(10):
+            xfinish1 = [xpos[j]]
+            yfinish1 = [ypos[j]]
+            for k in range(1, len(directions)):
+                theta = directions[k]
+                newy = (xfinish1[0] * np.sin(theta)) + (yfinish1[0] * np.cos(theta))            #find preliminary new x-location given step size  
+                yfinish1.append(newy)
+                newx = (xfinish1[0] * np.cos(theta)) - (yfinish1[0] * np.sin(theta))    
+                xfinish1.append(newx)
+            YLocation.append(yfinish1)
+            XLocation.append(xfinish1)
+        #title = 'Inline Layout'
+        initial_num = 10
+        
+    elif layout_type == 'optimized':
+        xpos = [1304.2130491853543, 303.16195377176825, 1882.7665062612382, 734.1365122392898, 36.582152829805295, 1078.6666766839614, 1779.34556196998, 417.79552464946823, 1986.6903503041713, 133.48666173166612, 1430.1977444645, 954.8374274350235, 839.2773010244406, 1186.314920647951, 518.9482768461385, 1681.3296876680367, 621.3034610992612, 1567.283691418906]
+        ypos = [204.01944774702838, 270.02673301978496, 276.97611783621744, 305.2706459401636, 1065.3030786448571, 104.67022680498235, 610.6008734856377, 450.6469581295796, 32.94310546319856, 1290.6284216353858, 413.28638998844144, 611.4810784612052, 117.69510957163021, 489.9943326680768, 225.4370943493467, 858.4028566999443, 505.9650483803546, 1212.01937488221]
+        #title = 'Optimized Layout'
+        ZLocation = np.array([0.] * len(xpos))
+        YLocation = []
+        XLocation = []
+        for j in range(len(xpos)):
+            xfinish1 = [xpos[j]]
+            yfinish1 = [ypos[j]]
+            for k in range(1, len(directions)):
+                theta = directions[k]
+                newy = (xfinish1[0] * np.sin(theta)) + (yfinish1[0] * np.cos(theta))            #find preliminary new x-location given step size  
+                yfinish1.append(newy)
+                newx = (xfinish1[0] * np.cos(theta)) - (yfinish1[0] * np.sin(theta))    
+                xfinish1.append(newx)
+            YLocation.append(yfinish1)
+            XLocation.append(xfinish1)
+        initial_num = len(xpos)
+    return XLocation, YLocation
         
 # Store Information on Turbines
 class Turbine(object):
@@ -1778,74 +1781,81 @@ RSME3 = [[0.] * initial_num for i in range(len(poss_ust))] #by number of upstrea
 #probu0 = [1./len(U0)] * len(U0) #probability of each ambiant wind speed
 
 #initial_num = 15
+#with open('colorado_uncertainty_data_Jensen.csv', newline='') as classfile:
+#    class_write = csv.writer(classfile)
 with open('colorado_wind_data_CLEANED.csv', newline='') as csvfile:
     info = csv.reader(csvfile, delimiter=',', quotechar='|')
-    next(csvfile) #skip first line - possible change later to be first term in list
-    #num_lines = 0.
-    for i, row in enumerate(info):
-        U0 = [float(row[6])] #read ambient wind speed from met tower
-        probwui = []
-        for i in range(0, len(U0)):
-            for j in range(0, len(wind_cases)):
-                #totalprob = probu0[i]*prob[j]
-                probwui.append(wind_cases[j][i])
+    with open('Jensen_colorado_ws.csv','a+',newline='') as outfile:
+        full_write = csv.writer(outfile)
+        #next(csvfile) #skip first line - possible change later to be first term in list
+        #num_lines = 0.
+        for i, row in enumerate(info):
+            U0 = [float(row[6])] #read ambient wind speed from met tower
+            probwui = []
+            for i in range(0, len(U0)):
+                for j in range(0, len(wind_cases)):
+                    #totalprob = probu0[i]*prob[j]
+                    probwui.append(wind_cases[j][i])
+            
+            directions  = []
+            #degrees = [0., 10., 20., 30., 40., 50., 60., 70., 80., 90., 100., 110., 120., 130., 140., 150., 160., 170., 180., 190., 200., 210., 220., 230., 240., 250., 260., 270., 280., 290., 300., 310., 320., 330., 340., 350.]
+            degrees = [float(row[5]) - 180.] #direction of wind
+            for l in range(0, len(degrees)):
+                radians = (degrees[l] / 180.) * np.pi
+                directions.append(radians) 
+            XLocation, YLocation = choose_layout(layout_type)
+            ZLocation = [0.0] * initial_num
+            HubHeight = [80.0] * initial_num
+            OldHubHeight = [80.0] * initial_num
+            ZHub = []
+            RotorRad = [40.0] * initial_num
+            if layout_type == 'colorado':
+                RotorRad = [77.0 / 2.] * initial_num
+            OldRotorRad = [40.0] * initial_num
+            alpha = [0.0] * initial_num
+            usturbinesrec = []
+            usturbines = [[]] * len(directions)
+            dsturbinesrec = []
+            dsturbines = [[]] * len(directions)
+            wakewidth = [[]] * len(directions)
+            distance = [[]] * len(directions)
+            percent = [[]]* len(directions)
+            ui = [10.0] * len(directions)     #changes in Compute_Wake function
+            windspeeds = [0.] * len(directions)
+            xcoords = [[]] * len(directions)
+            zcoords = [[]] * len(directions)
+            Power = [0.0] * len(directions)
+            Area = 0
         
-        directions  = []
-        #degrees = [0., 10., 20., 30., 40., 50., 60., 70., 80., 90., 100., 110., 120., 130., 140., 150., 160., 170., 180., 190., 200., 210., 220., 230., 240., 250., 260., 270., 280., 290., 300., 310., 320., 330., 340., 350.]
-        degrees = [float(row[5]) - 180.] #direction of wind
-        for l in range(0, len(degrees)):
-            radians = (degrees[l] / 180.) * np.pi
-            directions.append(radians)        
-        ZLocation = [0.0] * initial_num
-        HubHeight = [80.0] * initial_num
-        OldHubHeight = [80.0] * initial_num
-        ZHub = []
-        RotorRad = [40.0] * initial_num
-        if layout_type == 'colorado':
-            RotorRad = [77.0 / 2.] * initial_num
-        OldRotorRad = [40.0] * initial_num
-        alpha = [0.0] * initial_num
-        usturbinesrec = []
-        usturbines = [[]] * len(directions)
-        dsturbinesrec = []
-        dsturbines = [[]] * len(directions)
-        wakewidth = [[]] * len(directions)
-        distance = [[]] * len(directions)
-        percent = [[]]* len(directions)
-        ui = [10.0] * len(directions)     #changes in Compute_Wake function
-        windspeeds = [0.] * len(directions)
-        xcoords = [[]] * len(directions)
-        zcoords = [[]] * len(directions)
-        Power = [0.0] * len(directions)
-        Area = 0
+            for i in range(0, initial_num):
+                ZHub.append(HubHeight[i] + ZLocation[i])
+        
+            #initialize turbines         
+            turbines = [Turbine(XLocation[i], YLocation[i], ZLocation[i], HubHeight[i], RotorRad[i], alpha[i], usturbinesrec, usturbines, dsturbinesrec, dsturbines, wakewidth, distance, percent, ui, windspeeds, xcoords, zcoords, Power, Area) for i in range(0, initial_num)]
     
-        for i in range(0, initial_num):
-            ZHub.append(HubHeight[i] + ZLocation[i])
-    
-        #initialize turbines         
-        turbines = [Turbine(XLocation[i], YLocation[i], ZLocation[i], HubHeight[i], RotorRad[i], alpha[i], usturbinesrec, usturbines, dsturbinesrec, dsturbines, wakewidth, distance, percent, ui, windspeeds, xcoords, zcoords, Power, Area) for i in range(0, initial_num)]
+            #Evaluate Initial Layout
+            score = Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, aif)       
+            turbines_realsp = [float(i) for i in row[7:]] #windspeeds measured from nacelles
+            output_row = [float(this) for this in row] + [this.ui[0] for this in turbines]
+            full_write.writerow(output_row)
+            #print(row[5])
+            direction_coord = poss_directions.index(int(row[5]))
+            for i in range(initial_num):
+                error[direction_coord][i] += pow(turbines_realsp[i] - turbines[i].ui[0],2)
+                error_ct[direction_coord][i] += 1.
+            
+            windsp_coord = 0
+            while poss_ws[windsp_coord] < float(row[6]):
+                windsp_coord += 1
+            for i in range(initial_num):
+                error2[windsp_coord][i] += pow(turbines_realsp[i] - turbines[i].ui[0],2)
+                error2_ct[windsp_coord][i] += 1.
+            
+            for i in range(initial_num):
+                ust_coord = poss_ust.index(len(turbines[i].usturbines[0]))
+                error3[ust_coord][i] += pow(turbines_realsp[i] - turbines[i].ui[0],2)
+                error3_ct[ust_coord][i] += 1.
 
-        #Evaluate Initial Layout
-        score = Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, aif)       
-        turbines_realsp = [float(i) for i in row[7:]] #windspeeds measured from nacelles
-        
-        #print(row[5])
-        direction_coord = poss_directions.index(int(row[5]))
-        for i in range(initial_num):
-            error[direction_coord][i] += pow(turbines_realsp[i] - turbines[i].ui[0],2)
-            error_ct[direction_coord][i] += 1.
-        
-        windsp_coord = 0
-        while poss_ws[windsp_coord] < float(row[6]):
-            windsp_coord += 1
-        for i in range(initial_num):
-            error2[windsp_coord][i] += pow(turbines_realsp[i] - turbines[i].ui[0],2)
-            error2_ct[windsp_coord][i] += 1.
-        
-        for i in range(initial_num):
-            ust_coord = poss_ust.index(len(turbines[i].usturbines[0]))
-            error3[ust_coord][i] += pow(turbines_realsp[i] - turbines[i].ui[0],2)
-            error3_ct[ust_coord][i] += 1.
 tot_dir = [0.] * len(error)
 tot_ws = [0.] * len(error2)
 tot_ust = [0.] * len(error3)
