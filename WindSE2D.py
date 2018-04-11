@@ -183,7 +183,7 @@ def rotatedPowerFunctional(alpha,A,beta,mx,my,ma,u,numturbs,V):
         xrot = cos(alpha)*mx[i] - sin(alpha)*my[i]
         yrot = sin(alpha)*mx[i] + cos(alpha)*my[i]
 
-        J = J + 0.5*4.*np.pi*radius**2*ma[i]/(1.-ma[i])*Functional(exp(-(((x[0] - xrot)/thickness)**WTGexp + ((x[1] - yrot)/radius)**WTGexp))*u[0]**3.*dx)
+        J = J + 0.5*4.*np.pi*radius**2*ma[i]/(1.-ma[i])/beta*Functional(exp(-(((x[0] - xrot)/thickness)**WTGexp + ((x[1] - yrot)/radius)**WTGexp))*u[0]**3.*dx) ### /beta added by Annalise 12/13/17
 
     return J
 
@@ -194,17 +194,19 @@ def rotatedPowerFunction(alpha,A,beta,mx,my,ma,up,numturbs,V):
 
     for i in range(numturbs):
         #rotation
-        xrot = cos(alpha)*mx[i] - sin(alpha)*my[i]
+        xrot = cos(alpha)*mx[i] - sin(alpha)*my[i] ### -5 added by Annalise 12/14 to understand effects of smoothing kernal on usturbine
         yrot = sin(alpha)*mx[i] + cos(alpha)*my[i]
 
         if i ==0:
             print(up.sub(0)(xrot,yrot)[0])
-            J = 0.5*np.pi*radius**2*4*float(ma[i])*(1.-float(ma[i]))**2*up.sub(0)(xrot,yrot)[0]**3 
+            #J = 0.5*np.pi*radius**2*4*float(ma[i])*(1.-float(ma[i]))**2*up.sub(0)(xrot,yrot)[0]**3 
+            J = 0.5*air_density*np.pi*radius**2*4*float(ma[i])/(1.-float(ma[i]))*up.sub(0)(xrot,yrot)[0]**3 
             ### up.sub(0)(xrot,yrot)[0] --> up == u and p combined --> sub(0) == just u --> (xrot, yrot) == position of interest (center pt) --> [0] == x-velocity
         else:
             print(up.sub(0)(xrot,yrot)[0])
-            J = J + 0.5*np.pi*radius**2*4*float(ma[i])*(1.-float(ma[i]))**2*up.sub(0)(xrot,yrot)[0]**3
-
+            #J = J + 0.5*np.pi*radius**2*4*float(ma[i])*(1.-float(ma[i]))**2*up.sub(0)(xrot,yrot)[0]**3
+            J = J + 0.5*air_density*np.pi*radius**2*4*float(ma[i])/(1.-float(ma[i]))*up.sub(0)(xrot,yrot)[0]**3 ###uses Cp' instead of Cp, because we're using enregy at rotor
+            
     return J
 
 
@@ -297,11 +299,15 @@ def main(tf):
 
     lmix = radius/mlDenom ### mixing lenth
     ### mean rate of strain tensor ... so confused
+    #test = 2.*inner(0.5*(grad(u_next)+grad(u_next).T),0.5*(grad(u_next)+grad(u_next).T))
+    #print('trial: ',test)
     S = sqrt(2.*inner(0.5*(grad(u_next)+grad(u_next).T),0.5*(grad(u_next)+grad(u_next).T)))
     nu_T=lmix**2.*S ### eddie viscosity
 
     F = inner(grad(u_next)*u_next, v)*dx + (nu+nu_T)*inner(grad(u_next), grad(v))*dx - inner(div(v),p_next)*dx - inner(div(u_next),q)*dx - inner(f,v)*dx + inner(tf*u_next[0]**2,v)*dx 
-
+    ### u_next[0] ** 2 because it's not added to the force on f_AD calc?
+    ### I think this is ok without density --> http://libelemental.org/featured/2011/pdesys.html
+    
     # lateral BC
     # bc1 = DirichletBC(VQ.sub(0), Constant((8.0,0.0)), NoSlipBoundary())
     bc1a = DirichletBC(VQ.sub(0).sub(1), Constant(0.0), NoSlipBoundary())
@@ -414,10 +420,12 @@ if __name__ == "__main__":
     print('power output: ')
     print(Jfunc)
     data = [Jfunc]
-    with open('CFD_output.csv', "a+") as csv_file:
-        writer = csv.writer(csv_file, delimiter=',')
-        for line in data:
-            writer.writerow(line)
+    output = 'off'
+    if output == 'on':
+        with open('CFD_output.csv', "a+") as csv_file:
+            writer = csv.writer(csv_file, delimiter=',')
+            for line in data:
+                writer.writerow(line)
 
     u_rot_opt_out=project(u_rot_opt, V)
 

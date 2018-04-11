@@ -120,7 +120,7 @@ elif coloradoStart:
 else:
     numturbs = 10
 
-heat_output = False
+heat_output = True
 print_mesh = True
 optimize = False
 checkpts = False  # creates plots of turbine movement throughout optimization
@@ -628,15 +628,16 @@ def Eval_Objective(mx, my, ma, A, B, numturb, heat=False):
         u_rot, up_rot = main(tf_rot, i, VQ)  # RANS solver
         if u_rot == 'fuck':
             if heat:
+                print('error in solver')
                 return 'error', ['error'] * numturbs, 'error'
             else:
                 print('error')
                 return 'error', ['error']*numturbs
         if heat and i == 0:  # only calc heat for wind from left
-            power_dev, heat_out = rotatedPowerFunction(wind_cases[i][0], A,
-                                                       beta, mx, my, ma,
-                                                       up_rot, numturbs, V,
-                                                       mesh, True)
+            wind_sp, heat_out = rotatedPowerFunction(wind_cases[i][0], A,
+                                                     beta, mx, my, ma,
+                                                     up_rot, numturbs, V,
+                                                     mesh, True)
         else:
             wind_sp = rotatedPowerFunction(wind_cases[i][0], A, beta, mx, my,
                                            ma, up_rot, numturbs, V, mesh)
@@ -1106,6 +1107,7 @@ def create_mesh(mx, my, mz, ma, rad2):
                     s=1,
                     c='k')
         plt.scatter(meshx2, meshy2, s=1, c='r')
+        plt.axis('equal')
         # plt.scatter(mx,my,color = 'r', marker='*')
         plt.savefig('mesh_vis_colorado.png')
     print('mesh size: ', len(mesh.coordinates()))
@@ -1185,13 +1187,30 @@ if __name__ == "__main__":
             full_write = csv.writer(outfile)
             # num_lines = 0.
             counter = 0
-            beggining = 144 + (enum - 1 - 24) * 4
-            ending = 144 + (enum - 24) * 4
+            beggining = 1088 + (enum - 1 - 86) * 100
+            ending = 1088 + (enum - 86) * 100
+            unique_conditions = [0, 1, 3, 5, 7, 9, 11, 12, 13, 14, 15, 17, 19,
+                                 20, 21, 22, 23, 24, 26, 27, 28, 33, 38, 41,
+                                 44, 49, 71, 73, 75, 79, 80, 86, 90, 91, 92,
+                                 96, 101, 102, 103, 104, 106, 111, 122, 123,
+                                 124, 125, 127, 130, 132, 133, 134, 135, 137,
+                                 140, 142, 143, 147, 157, 158, 160, 164, 166,
+                                 193, 195, 196, 199, 202, 208, 217, 218, 220,
+                                 221, 225, 226, 233, 242, 248, 250, 254, 281,
+                                 282, 285, 307, 354, 358, 360, 369, 371, 372,
+                                 385, 396, 413, 424, 444, 473, 477, 505, 570,
+                                 573, 574, 582, 585, 589, 601, 633, 728, 863,
+                                 871, 923, 924, 927, 929, 1010, 1014, 1088,
+                                 1110, 1143, 1170, 1173, 1259, 1304, 1367,
+                                 1369, 1370, 1375, 1383, 1386, 1387, 1388,
+                                 1389, 1393, 1394, 1441, 1829, 1858, 2070,
+                                 2365, 2497, 3080]
+            unique_conditions = [1369, 2497]
             for i, row in enumerate(info):  # subset for testing!
                 # if counter >= 10:
                 #     break
                 # counter += 1
-                if i >= beggining and i < ending:
+                if i in unique_conditions:
                     print('test number: ' + str(i))
                     windsp = [float(row[6])]  # one wind speed
                     dirs = [float(row[5]) / 180. * np.pi - 3*np.pi/2]
@@ -1205,7 +1224,7 @@ if __name__ == "__main__":
                             # tuple of wind speed + wind diretion
                     print('wind_cases: ', wind_cases)
                     if heat_output:
-                        Jfunc, cum_power, heat_out = Eval_Objective(mx_opt,
+                        Jfunc, cum_ws, heat_out = Eval_Objective(mx_opt,
                                                                     my_opt, ma,
                                                                     A, B,
                                                                     numturbs,

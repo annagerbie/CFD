@@ -13,7 +13,7 @@ import os
 global nemo
 import numpy as np
 from time import time
-nemo = 1
+
 
 init_step = 10. #number of starting mesh intervals
 mesh_width = 200. #meters - width of mesh
@@ -23,14 +23,14 @@ site_x = 1999.             #Length of one side of solution area, in m
 site_y = 1999.              #Length of one side of solution area, in m  
 XLength = site_x * 1.2             #Length of one side of solution area, in m
 YLength = site_y * 1.2               #Length of one side of solution area, in m
-U0 = [8.0]      #mean wind speed, in m/s
+U0 = [8.0, 10.]      #mean wind speed, in m/s
 #z = 60                     #hub height, in m
 #Rr = 20                    #Rotor Radius, in m
 Ct = 0.88                   #Thrust Coefficient
 #aif = 0.1909830056250526    #Axial induction factor based on Cp = 0.5
 #aif = 0.25
 aif = 1./3. #for testing
-wind_cases = [[1.0]]
+# wind_cases = [[1.0]]
 #wind_cases = [(0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011),
 #              (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011),
 #              (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.009, 0.011), (0.004, 0.011, 0.012), (0.004, 0.013, 0.015), (0.004, 0.016, 0.017), 
@@ -67,7 +67,7 @@ WCOE = 0.1                  #wholdsale cost of electricity, in $/kWh
 yrs = 20.0
 
 output = 'off'
-nwp = False
+nwp = True
 #ma = 0.33
 Cp = 16./27. #for testing
 #Cp = 0.34
@@ -85,24 +85,13 @@ elif shore == 'off':
 
 directions  = []
 #degrees = [0., 10., 20., 30., 40., 50., 60., 70., 80., 90., 100., 110., 120., 130., 140., 150., 160., 170., 180., 190., 200., 210., 220., 230., 240., 250., 260., 270., 280., 290., 300., 310., 320., 330., 340., 350.]
-degrees = [0.]
+degrees = [i * 10 for i in range(36)]
 for l in range(0, len(degrees)):
     radians = (degrees[l] / 180.) * np.pi
     directions.append(radians)
 #prob = [1./len(directions)] * len(directions)   #probability of wind from each direction
 #probu0 = [1./len(U0)] * len(U0) #probability of each ambiant wind speed
-probwui = []
-for i in range(0, len(U0)):
-    for j in range(0, len(wind_cases)):
-        #totalprob = probu0[i]*prob[j]
-        probwui.append(wind_cases[j][i])
-        
-wsui = []
-for i in range(0, len(U0)):
-    for j in range(0, len(wind_cases)):
-        #totalprob = probu0[i]*prob[j]
-        wsui.append(U0[i])
-
+probwui = [[1./(36*2), 1./(36*2)] for i in range(36)]
 #condition = raw_input("Input Condition NEUTRAL, STABLE, or UNSTABLE: ") #Input wind condition
 condition = 'NEUTRAL'
 
@@ -662,10 +651,17 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
     sorted_order = [ii[0] for ii in sorted_order]
     #print('sorted order')
     #print(sorted_order)
-    for k in sorted_order:
-        wdsp = []
-        for u0i in range(0, len(U0)):
-            for wd in range(0, len(directions)):
+    wdsp_list = [[0.] * len(U0) for ii in range(initial_num)]
+    windspeeds = [wdsp_list for ii in range(len(turbines[0].XLocation))]
+    # windspeeds = [[] for i in range(len(turbines[0].XLocation))]
+    for wd in range(len(turbines[0].XLocation)):
+        wdsp_byturb = []
+        analysis_order = [(i, turbines[i].YLocation[wd]) for i in range(initial_num)]
+        analysis_order.sort(key=lambda x: x[1])
+        analysis_order = [i[0] for i in analysis_order]
+        for k in analysis_order:
+            wdsp = []
+            for u0i in range(0, len(U0)):
                 if len(turbines[k].usturbines[wd]) == 0:        #if turbine has no upstream turbines, 
                        #INCORPORATE POWER LAW
                     hubheight = turbines[k].HubHeight
@@ -780,7 +776,7 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                         
                         #Grady Model 
                         r1 = Rr * np.sqrt((1.-aif) / (1. - 2.*aif))
-                        EWU = turbines[usindex].ui[wd] * (1 - (2.*aif)/((1.+alpha*(x/r1))**(2)))
+                        EWU = windspeeds[wd][usindex][u0i] * (1 - (2.*aif)/((1.+alpha*(x/r1))**(2)))
                         #print(EWU)
                         wdsp.append(EWU * ((hubheight / Zref) ** alphah))
                         
@@ -793,34 +789,41 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
             
                         d = len(coordWS)
                         wdsp.append(tally2)
-    
+            wdsp_byturb.append(wdsp)
+        order_wdsp = list(zip(analysis_order, wdsp_byturb))
+        order_wdsp.sort(key=lambda x: x[0])
+        wdsp_byturb = [ii[1] for ii in order_wdsp]
+        windspeeds[wd] = wdsp_byturb
         turbines[k].ui = wdsp
         turbines[k].windspeeds = wdsp
-
+    # print(windspeeds)
     #calculate power developed for each turbine
     for i in range(0, initial_num):
         pwr = []
         rorad = turbines[i].RotorRad
         Area = (rorad ** 2.0) * np.pi
-        for wd in range(0, len(probwui)):
-            ''' #power curve consideration
-            #incorporating power curve suggested by Pat, June 10th
-            if turbines[i].ui[wd] < Uref and turbines[i].ui[wd] >= Cutin: #Calculate power for effective windspeeds between 3 and 11 m/s
-                temp1 = 0.5 * ro * Area * (turbines[i].ui[wd] ** 3.0) * Cp * Cf/1000.
-                p1 = temp1 * probwui[wd]
+        for wd in range(0, len(turbines[i].XLocation)):
+            for ws in range(len(U0)):
+                ''' #power curve consideration
+                #incorporating power curve suggested by Pat, June 10th
+                if turbines[i].ui[wd] < Uref and turbines[i].ui[wd] >= Cutin: #Calculate power for effective windspeeds between 3 and 11 m/s
+                    temp1 = 0.5 * ro * Area * (turbines[i].ui[wd] ** 3.0) * Cp * Cf/1000.
+                    p1 = temp1 * probwui[wd]
+                    pwr.append(p1)
+        
+                if turbines[i].ui[wd] < Cutin:        #cut in speed is 3 m/s
+                    pwr.append(0.0)
+        
+                if turbines[i].ui[wd] >= Uref:      #constant for 11.5 m/s rated power and above
+                    temp1 = 0.5 * ro * Area * (Uref ** 3.0) * Cp * Cf/1000.
+                    p1 = temp1 * probwui[wd]
+                    pwr.append(p1)
+                '''
+                temp1 = 0.5 * ro * Area * (windspeeds[wd][i][ws] ** 3.0) * Cp * Cf/1000.
+                #print(wd)
+                #print(ws)
+                p1 = temp1 * probwui[wd][ws]
                 pwr.append(p1)
-    
-            if turbines[i].ui[wd] < Cutin:        #cut in speed is 3 m/s
-                pwr.append(0.0)
-    
-            if turbines[i].ui[wd] >= Uref:      #constant for 11.5 m/s rated power and above
-                temp1 = 0.5 * ro * Area * (Uref ** 3.0) * Cp * Cf/1000.
-                p1 = temp1 * probwui[wd]
-                pwr.append(p1)
-            '''
-            temp1 = 0.5 * ro * Area * (turbines[i].ui[wd] ** 3.0) * Cp * Cf/1000.
-            p1 = temp1 * probwui[wd]
-            pwr.append(p1)
         turbines[i].Power = [this_power for this_power in pwr]
 ################################################################################################################
 def Compute_Cost(initial_num, ro, yrs, WCOE, condition, depth):
@@ -878,8 +881,9 @@ def Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, 
 
     objective = 0.
     tot_power = 0.
+    ws_combos = len(probwui)*len(probwui[0])
     for j in range(0, initial_num):
-        for ws in range(0, len(probwui)):
+        for ws in range(ws_combos):
             tot_power += turbines[j].Power[ws]
             #objective -= turbines[j].Power[ws]
             #windspeeds += turbines[i].ui
@@ -931,7 +935,6 @@ def Pattern_Search(init_step, minstep, random_vec, initial_num, z0, U0, Zref, al
         #print('objective eval: ', nomove)
         #print('h= ', h)
         step2 = init_step * mesh_width
-        cter = 0
         while step2 >= minstep:
             print(step2)
             #print_graph()
@@ -1836,6 +1839,7 @@ if output == 'on':
 #i = 1
 initial_num = 30
 for line in range(0, num_lines):
+    nemo = 0
     if inf_start == True:
         g = inf.readline()
         initial_num = int(g.rstrip())
@@ -1939,29 +1943,6 @@ for line in range(0, num_lines):
             data_out.write(str('The final layout has a score of: ' + str(score) + '\n'))
     print('The final layout with ', initial_num, ' turbines has a score of: ', score)
 
-    total = 0.0
-    possible = 0.0
-    windspeeds = 0.0
-    #sum_it = 0
-    for i in range(0, initial_num):
-        Area = np.pi * ((turbines[i].RotorRad) ** 2.)
-        hubheight = turbines[i].HubHeight
-        for d in range(0, len(probwui)):
-            total += turbines[i].Power[d]
-
-            Uiii = wsui[d] * ((hubheight / Zref) ** alphah)
-            #possible += 0.5 * (Uiii ** 3) * ro * Area * Cp * Cf * probwui[d] / 1000
-            #if abs(Uiii - 17) < 0000.1:
-            #    sum_it += 1
-            #    print(turbines[i].Power[d]/(0.5 * (Uiii ** 3) * ro * Area * Cp * Cf * probwui[d] / 1000))
-            if Uiii < Uref:
-                possible += 0.5 * (Uiii ** 3) * ro * Area * Cp * Cf * probwui[d] / 1000
-            else:
-                possible += 0.5 * (Uref ** 3) * ro * Area * Cp * Cf * probwui[d] / 1000
-    #print(sum_it)
-    efficiency = total/possible * 100
-    print('efficiency = ', efficiency)
-    print('total power = ', total)
     '''
     for i in turbines:
         print(i.ui[0])
@@ -1975,7 +1956,7 @@ for line in range(0, num_lines):
             data_out.write(str('The effective windspeed for turbine ' + str(i) + ' is ' + str(turbines[i].ui) + '\n'))
             data_out.write(str('Turbine ' + str(i) + ' power: ' + str(turbines[i].Power) + '\n'))
      
-        data_out.write(str('The total power generated was: ' + str(total) + ' kW. \n'))    
+        data_out.write(str('The total power generated was: ' + str(score) + ' kW. \n'))    
     
         #rorad = turbines[k].RotorRad
         #Area = np.pi * (rorad ** 2.0)
@@ -1983,10 +1964,8 @@ for line in range(0, num_lines):
         #possible += temp1
         #efficiency = (total / possible) * 100
         #print('Farm efficiency is ', efficiency, '%.')
-        data_out.write(str('The efficiency of the layout was: ' + str(efficiency) + '%. \n'))
         data_out.write(str('The Objective was calculated ' + str(nemo) + ' times. \n'))
         data_out.write(str('The pattern serach ran in '+str(total_time)+' s\n'))
-        excel.write(str(str(initial_num) + ',' + str(score) + ',' + str(total) + ',' + str(efficiency) + ',' + str(nemo) + ',' + str(line + 1) + '\n'))
     
         #print_graph()
         #plot_cables(networks)

@@ -14,6 +14,7 @@ import os
 global nemo
 import numpy as np
 from time import time
+
 nemo = 1
 
 init_step = 400.0           #Step Size for translation, in m
@@ -558,22 +559,24 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                     #print('works')
                 
                 elif cd + jwakerad <= krad:                 #if the wake is fully encompassed by the rotor diameter    
-                    wakearea = np.pi * (jwakerad ** 2.0)
-                    percentwake = wakearea / (np.pi * (krad ** 2.0))
-                    parpercent.append(percentwake)
+                    # wakearea = np.pi * (jwakerad ** 2.0)
+                    # percentwake = wakearea / (np.pi * (krad ** 2.0))
+                    # parpercent.append(percentwake)
+                    parpercent.append(jwakerad / krad)
     
                 else:
-                    integrand1 = ((cd ** 2.0) + (krad ** 2.0) - (jwakerad ** 2.0)) / int1_den
-                    #print(integrand1)
-                    int2_den = 2.0 * cd * jwakerad                
-                    integrand2 = ((cd ** 2.0) + (jwakerad ** 2.0) - (krad ** 2.0)) / int2_den
-                    #print(integrand2) 
-                    q = (krad ** 2.0) * (np.arccos(integrand1)) 
-                    b = (jwakerad ** 2.0) * (np.arccos(integrand2))
-                    c = 0.5 * np.sqrt((-cd + krad + jwakerad) * (cd + krad - jwakerad) * (cd - krad + jwakerad) * (cd + krad + jwakerad))
-                    AOverlap = q + b - c
-                    RSA = ((np.pi) * (krad ** 2.0))
-                    z = AOverlap / RSA
+#                    integrand1 = ((cd ** 2.0) + (krad ** 2.0) - (jwakerad ** 2.0)) / int1_den
+#                    #print(integrand1)
+#                    int2_den = 2.0 * cd * jwakerad                
+#                    integrand2 = ((cd ** 2.0) + (jwakerad ** 2.0) - (krad ** 2.0)) / int2_den
+#                    #print(integrand2) 
+#                    q = (krad ** 2.0) * (np.arccos(integrand1)) 
+#                    b = (jwakerad ** 2.0) * (np.arccos(integrand2))
+#                    c = 0.5 * np.sqrt((-cd + krad + jwakerad) * (cd + krad - jwakerad) * (cd - krad + jwakerad) * (cd + krad + jwakerad))
+#                    AOverlap = q + b - c
+#                    RSA = ((np.pi) * (krad ** 2.0))
+#                    z = AOverlap / RSA
+                    z = ((jwakerad + krad) - cd) / krad
                     parpercent.append(z)      #percentage of RSA that has wake interaction 
                 
            
@@ -586,9 +589,9 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                 secondx = turbines[second].XLocation[wd]
                 secondz = turbines[second].HubHeight
                 secondrad = turbines[i].wakewidth[wd][1] / 2.0
-                cd = np.sqrt(((firstx - secondx) ** 2.0) + ((firstz - secondz) ** 2.0))   #distance between the centerline of wake and rotor hub
+                cd2 = np.sqrt(((firstx - secondx) ** 2.0) + ((firstz - secondz) ** 2.0))   #distance between the centerline of wake and rotor hub
     
-                if cd > (firstrad + secondrad):     #if wakes do not overlap at all within the rotor swept area
+                if cd2 > (firstrad + secondrad):     #if wakes do not overlap at all within the rotor swept area
                     #m = []
                     overlap_flag = 1
                     for q in range(0, len(turbines[i].usturbines[wd])):
@@ -605,20 +608,22 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                             parpercent.append(1.0)
     
                         elif cd + jwakerad <= krad:           #if the wake is fully encompassed by the rotor diameter
-                            wakearea = np.pi * (jwakerad ** 2.0)
-                            percentwake = wakearea / (np.pi * (krad ** 2.0))
-                            parpercent.append(percentwake)
+#                            wakearea = np.pi * (jwakerad ** 2.0)
+#                            percentwake = wakearea / (np.pi * (krad ** 2.0))
+#                            parpercent.append(percentwake)
+                            parpercen.append(jwakerad / krad)
                             
                         else:
-                            integrand1 = ((cd ** 2.0) + (krad ** 2.0) - (jwakerad ** 2.0)) / (2.0 * cd * krad)
-                            integrand2 = ((cd ** 2.0) + (jwakerad ** 2.0) - (krad ** 2.0)) / (2.0 * cd * jwakerad)             
-                            d = (krad ** 2.0) * (np.arccos(integrand1)) 
-                            b = (jwakerad ** 2.0) * (np.arccos(integrand2))
-                            c = 0.5 * np.sqrt((-cd + krad + jwakerad) * (cd + krad - jwakerad) * (cd - krad + jwakerad) * (cd + krad + jwakerad))
-                            AOverlap = d + b - c
-                            #AOverlap = ((krad ** 2.0) * np.arccos(integrand1)) + ((jwakerad ** 2.0) * np.arccos(integrand2)) - 0.5 * np.sqrt(abs((-cd + krad + jwakerad) * (cd + krad - jwakerad) * (cd - krad + jwakerad) * (cd + krad + jwakerad)))
-                            RSA = np.pi * (krad ** 2.0)
-                            z = AOverlap / RSA
+#                            integrand1 = ((cd ** 2.0) + (krad ** 2.0) - (jwakerad ** 2.0)) / (2.0 * cd * krad)
+#                            integrand2 = ((cd ** 2.0) + (jwakerad ** 2.0) - (krad ** 2.0)) / (2.0 * cd * jwakerad)             
+#                            d = (krad ** 2.0) * (np.arccos(integrand1)) 
+#                            b = (jwakerad ** 2.0) * (np.arccos(integrand2))
+#                            c = 0.5 * np.sqrt((-cd + krad + jwakerad) * (cd + krad - jwakerad) * (cd - krad + jwakerad) * (cd + krad + jwakerad))
+#                            AOverlap = d + b - c
+#                            #AOverlap = ((krad ** 2.0) * np.arccos(integrand1)) + ((jwakerad ** 2.0) * np.arccos(integrand2)) - 0.5 * np.sqrt(abs((-cd + krad + jwakerad) * (cd + krad - jwakerad) * (cd - krad + jwakerad) * (cd + krad + jwakerad)))
+#                            RSA = np.pi * (krad ** 2.0)
+#                            z = AOverlap / RSA
+                            z = ((jwakerad + krad) - cd) / krad
                             parpercent.append(z)      #percentage of RSA that has wake interaction
                     
             if len(turbines[i].usturbines[wd]) >= 2 and overlap_flag != 1:      #if there are at least 2 upstream turbines whose wakes overlap, discretize the RSA and evaluate each point
@@ -630,7 +635,11 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
 #Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif)                   
                   
     #calculate wind speed for each downstream turbine based on downstream distance
-    for k in range(0, initial_num):
+    analysis_order = [(i, turbines[i].YLocation[0]) for i in range(initial_num)]
+    analysis_order.sort(key=lambda x: x[1])
+    analysis_order = [i[0] for i in analysis_order]
+    # print('analysis_order: ', analysis_order)
+    for k in analysis_order:
         wdsp = []
         for u0i in range(0, len(U0)):
             for wd in range(0, len(directions)):
@@ -844,7 +853,9 @@ def Compute_Cost(initial_num, ro, yrs, WCOE, condition, depth):
  
 ################################################################################################################
 def Eval_Objective(initial_num, z0, U0, Zref, alphah, ro, yrs, WCOE, condition, aif):
+    # start = time()
     Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif)
+    # print('time to jensen: ',time() - start)
     #cost = Compute_Cost(initial_num, ro, yrs, WCOE, condition, depth)
     #cost = 0.0
     global nemo
@@ -1473,8 +1484,8 @@ def print_graph():
             redtry.append(turbines[i].YLocation[0])
 
         elif turbines[i].HubHeight <= 80 and turbines[i].RotorRad <= 40:
-            yellowtrx.append(turbines[i].XLocation[0])
-            yellowtry.append(turbines[i].YLocation[0])
+            yellowtrx.append(turbines[i].XLocation[0] + 4116.3795645)
+            yellowtry.append(turbines[i].YLocation[0] + 12952.2223465)
 
         elif turbines[i].HubHeight <= 80 and turbines[i].RotorRad <= 60:
             greentrx.append(turbines[i].XLocation[0])
@@ -1531,7 +1542,8 @@ def print_graph():
     ax1.scatter(greencx, greency, s=10, c='g', marker="o")
     ax1.scatter(bluecy, bluecy, s=10, c='b', marker="o")
     ax1.scatter(redtrx, redtry, s=10, c='r', marker="^")
-    ax1.scatter(yellowtrx, yellowtry, s=10, c='y', marker="^")
+    # ax1.scatter(yellowtrx, yellowtry, s=10, c='y', marker="^")
+    ax1.scatter(yellowtrx, yellowtry, s=30, c=(0.023529, 0.215686, 0.356863), marker="^")
     ax1.scatter(greentrx, greentry, s=10, c='g', marker="^")
     ax1.scatter(bluetrx, bluetry, s=10, c='b', marker="^")
     ax1.scatter(redrhx, redrhy, s=10, c='r', marker="d")
@@ -1544,11 +1556,11 @@ def print_graph():
     ax1.scatter(bluesqx, bluesqy, s=10, c='b', marker="s")
     #plt.axis([0, site_x, 0, site_y])
     
-    for i in range(len(turbines)):
-        ax1.annotate(i, (turbines[i].XLocation[0],turbines[i].YLocation[0]))
+    # for i in range(len(turbines)):
+    #     ax1.annotate(i, (turbines[i].XLocation[0],turbines[i].YLocation[0]))
     plt.ylabel('Position (m)')
     plt.xlabel('Position (m)')
-    plt.title(str('Optimization of ' + str(initial_num) + ' Turbines'))
+    plt.title(str('Colorado Select Field Turbine Layout'))
     #plt.savefig(str(str(initial_num) + 'turbinesWithDisc.png'), bbox_inches='tight')
 #############################################################################################################
 #calculating distance between turbines
@@ -1768,24 +1780,43 @@ wind_cases = [[1.0]]
 poss_directions = [270, 280, 290, 300, 310, 320, 330, 340, 350]
 poss_ws = [0., 5., 10., 15., 20., 25.]
 poss_ust = [0, 1, 2, 3, 4, 5]
-error = [[0.] * initial_num for i in range(len(poss_directions))]
-error_ct = [[0.] * initial_num for i in range(len(poss_directions))]
-error2 = [[0.] * initial_num for i in range(len(poss_ws))]
-error2_ct = [[0.] * initial_num for i in range(len(poss_ws))]
-error3 = [[0.] * initial_num for i in range(len(poss_ust))]
-error3_ct = [[0.] * initial_num for i in range(len(poss_ust))]
+error = [[0.] * numturbs for i in range(len(poss_directions))]
+error_ct = [[0.] * numturbs for i in range(len(poss_directions))]
+under = [[0.] * numturbs for i in range(len(poss_directions))]
+direc = [[0.] * numturbs for i in range(len(poss_directions))]
+howmuch = [[0.] * numturbs for i in range(len(poss_directions))]
+ave_dev = [[0.] * numturbs for i in range(len(poss_directions))]
+
+error2 = [[0.] * numturbs for i in range(len(poss_ws))]
+error2_ct = [[0.] * numturbs for i in range(len(poss_ws))]
+under2 = [[0.] * numturbs for i in range(len(poss_ws))]
+direc2 = [[0.] * numturbs for i in range(len(poss_ws))]
+howmuch2 = [[0.] * numturbs for i in range(len(poss_ws))]
+ave_dev2 = [[0.] * numturbs for i in range(len(poss_ws))]
+
+error3 = [[0.] * numturbs for i in range(len(poss_ust))]
+error3_ct = [[0.] * numturbs for i in range(len(poss_ust))]
+under3 = [[0.] * numturbs for i in range(len(poss_ust))]
+direc3 = [[0.] * numturbs for i in range(len(poss_ust))]
+howmuch3 = [[0.] * numturbs for i in range(len(poss_ust))]
+ave_dev3 = [[0.] * numturbs for i in range(len(poss_ust))]
+
 RSME = [[0.] * initial_num for i in range(len(poss_directions))] #by wind direction
 RSME2 = [[0.] * initial_num for i in range(len(poss_ws))] #by wind speed
 RSME3 = [[0.] * initial_num for i in range(len(poss_ust))] #by number of upstream turbines
 #prob = [1./len(directions)] * len(directions)   #probability of wind from each direction
 #probu0 = [1./len(U0)] * len(U0) #probability of each ambiant wind speed
-
+all_error = []
 #initial_num = 15
 #with open('colorado_uncertainty_data_Jensen.csv', newline='') as classfile:
 #    class_write = csv.writer(classfile)
+if nwp:
+    file_name = 'Jensen_colorado_ws_nwp.csv'
+else:
+    file_name = 'Jensen_colorado_ws.csv'
 with open('colorado_wind_data_CLEANED.csv', newline='') as csvfile:
     info = csv.reader(csvfile, delimiter=',', quotechar='|')
-    with open('Jensen_colorado_ws.csv','a+',newline='') as outfile:
+    with open(file_name, 'w+',newline='') as outfile:
         full_write = csv.writer(outfile)
         #next(csvfile) #skip first line - possible change later to be first term in list
         #num_lines = 0.
@@ -1843,18 +1874,34 @@ with open('colorado_wind_data_CLEANED.csv', newline='') as csvfile:
             for i in range(initial_num):
                 error[direction_coord][i] += pow(turbines_realsp[i] - turbines[i].ui[0],2)
                 error_ct[direction_coord][i] += 1.
-            
+                if turbines_realsp[i] - turbines[i].ui[0] > 0.:
+                    # underpredicting
+                    under[direction_coord][i] += 1.
+                by_much = turbines_realsp[i] - turbines[i].ui[0]
+                howmuch[direction_coord][i] += by_much
+                all_error.append(by_much)
+
             windsp_coord = 0
             while poss_ws[windsp_coord] < float(row[6]):
                 windsp_coord += 1
             for i in range(initial_num):
                 error2[windsp_coord][i] += pow(turbines_realsp[i] - turbines[i].ui[0],2)
                 error2_ct[windsp_coord][i] += 1.
+                if turbines_realsp[i] - turbines[i].ui[0] > 0.:
+                    # underpredicting
+                    under2[windsp_coord][i] += 1.
+                by_much = turbines_realsp[i] - turbines[i].ui[0]
+                howmuch2[windsp_coord][i] += by_much
             
             for i in range(initial_num):
                 ust_coord = poss_ust.index(len(turbines[i].usturbines[0]))
                 error3[ust_coord][i] += pow(turbines_realsp[i] - turbines[i].ui[0],2)
                 error3_ct[ust_coord][i] += 1.
+                if turbines_realsp[i] - turbines[i].ui[0] > 0.:
+                    # underpredicting
+                    under3[ust_coord][i] += 1.
+                by_much = turbines_realsp[i] - turbines[i].ui[0]
+                howmuch3[ust_coord][i] += by_much
 
 tot_dir = [0.] * len(error)
 tot_ws = [0.] * len(error2)
@@ -1862,8 +1909,14 @@ tot_ust = [0.] * len(error3)
 for i,j in enumerate(error):
     try:
         tot_dir[i] = np.sqrt(sum(j) / sum(error_ct[i]))
+        direc[i] = sum(under[i]) / sum(error_ct[i])
+        # percent under predicting
+        ave_dev[i] = sum(howmuch[i]) / sum(error_ct[i])
     except:
         tot_dir[i] = 'N/A'
+        direc[i] = 'N/A'
+        # percent under predicting
+        ave_dev[i] = 'N/A'
     for a,b in enumerate(j):
         try:
             RSME[i][a] = np.sqrt(b / error_ct[i][a])
@@ -1872,8 +1925,14 @@ for i,j in enumerate(error):
 for i,j in enumerate(error2):
     try:
         tot_ws[i] = np.sqrt(sum(j) / sum(error2_ct[i]))
+        direc2[i] = sum(under2[i]) / sum(error2_ct[i])
+        # percent under predicting
+        ave_dev2[i] = sum(howmuch2[i]) / sum(error2_ct[i])
     except:
         tot_ws[i] = 'N/A'
+        direc2[i] = 'N/A'
+        # percent under predicting
+        ave_dev2[i] = 'N/A'
     for a,b in enumerate(j):
         try:
             RSME2[i][a] = np.sqrt(b / error2_ct[i][a])
@@ -1882,15 +1941,24 @@ for i,j in enumerate(error2):
 for i,j in enumerate(error3):
     try:
         tot_ust[i] = np.sqrt(sum(j) / sum(error3_ct[i]))
+        direc3[i] = sum(under3[i]) / sum(error3_ct[i])
+        # percent under predicting
+        ave_dev3[i] = sum(howmuch3[i]) / sum(error3_ct[i])
     except:
         tot_ust[i] = 'N/A'
+        direc3[i] = 'N/A'
+        # percent under predicting
+        ave_dev3[i] = 'N/A'
     for a,b in enumerate(j):
         try:
             RSME3[i][a] = np.sqrt(b / error3_ct[i][a])
         except:
             RSME3[i][a] = 'N/A'
-
-with open('RMSE_Jensen_colorado_byturb.csv','w+',newline='') as outfile:
+if nwp:
+    filename = 'RMSE_Jensen_colorado_byturb_nwp.csv'
+else: 
+    filename = 'RMSE_Jensen_colorado_byturb.csv'
+with open(filename,'w+',newline='') as outfile:
     write = csv.writer(outfile)
     blank = ['']
     blank.extend([i for i in range(37)])
@@ -1909,15 +1977,65 @@ with open('RMSE_Jensen_colorado_byturb.csv','w+',newline='') as outfile:
         start_ust = [poss_ust[k]]
         start_ust.extend(i)
         write.writerow(start_ust)
-with open('RMSE_Jensen_colorado.csv','w+',newline='') as outfile:
+if nwp:
+    filename = 'RMSE_Jensen_colorado_nwp.csv'
+else:
+    filename = 'RMSE_Jensen_colorado.csv'
+with open(filename,'w+',newline='') as outfile:
+    print('writing outfile')
     write = csv.writer(outfile)
-    write. writerow(poss_directions)
-    write.writerow(tot_dir)
+    write.writerow(['wind directions']+poss_directions)
+    write.writerow(['RMSE']+tot_dir)
+    write.writerow(['percent underpredicted']+direc)
+    write.writerow(['average error']+ave_dev)
     write.writerow([])
-    write. writerow(poss_ws)
-    write.writerow(tot_ws)
+    write.writerow(['wind speeds']+poss_ws)
+    write.writerow(['RMSE']+tot_ws)
+    write.writerow(['percent underpredicted']+direc2)
+    write.writerow(['average error']+ave_dev2)
     write.writerow([])
-    write. writerow(poss_ust)
-    write.writerow(tot_ust)
+    write.writerow(['number of upstream turbines']+poss_ust)
+    write.writerow(['RMSE']+tot_ust)
+    write.writerow(['percent underpredicted']+direc3)
+    write.writerow(['average error']+ave_dev3)
     #print('The final layout with ', initial_num, ' turbines has a score of: ', score)
+# make a histogram of all errors
+f, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+ax1.hist(all_error)
+if nwp:
+    ax1.set_title('Jensen model error frequency plot\n with nested wake provision')   
+else:
+    ax1.set_title('Jensen model error frequency plot')
+ax1.set_ylabel('Frequency')
+plt.xlabel('error (m/s)')
+plt.xlim(-20, 15)
+# all_error.sort()
+# for i in range(5):
+#     index = i * len(all_error) / 4.
+#     quartiles.append(all_error[index])
+ax2.boxplot(all_error, vert=False)
+if nwp:
+    plt.savefig('jensen_error_hist_nwp.png')
+else:
+    plt.savefig('jensen_error_hist.png')
+# find indices of error < -5 or > 7
+indices = []
+for ct, i in enumerate(all_error):
+    if i < -5 or i > 7:
+        indices.append(int(ct / 37))
+print(len(indices))
+print(len(set(indices)))
+outlier_conditions = []
+outlier_ct = []
+with open(file_name, newline='') as csvfile:
+    info = csv.reader(csvfile, delimiter=',', quotechar='|')
+    for i, row in enumerate(info):
+        if i in indices:
+            condition = (float(row[5]), float(row[6]))
+            if condition not in outlier_conditions:
+                outlier_conditions.append(condition)
+                outlier_ct.append(1)
+            else:
+                index = outlier_conditions.index(condition)
+                outlier_ct[index] += 1
 print('done!')
