@@ -113,7 +113,7 @@ elif coloradoStart:
     RD = 77.
     radius = RD / 2.
     site_x = 50. * RD
-    sity_y = 50. * RD
+    site_y = 50. * RD
     Lx = 200. * RD
     Ly = 200. * RD
     numturbs = 37
@@ -145,8 +145,8 @@ def refine_mesh(mesh, site_x, site_y, refine_where, mx, my, mz, ma, rad2):
     if refine_where == 'farm':
         for cell in cells(mesh):
             # cell_ct += 1
-            if (cell.midpoint()[0]**2 + cell.midpoint()[1]**2
-                < site_x**2 + site_y**2 + h):
+            if ((cell.midpoint()[0]**2 + cell.midpoint()[1]**2)
+                < (site_x**2 + site_y**2 + h)):
                 cell_f[cell] = True
                 # if the midpoint of the cell is within the circumradius of the
                 # farm, change the cell's value to true
@@ -154,9 +154,9 @@ def refine_mesh(mesh, site_x, site_y, refine_where, mx, my, mz, ma, rad2):
         for cell in cells(mesh):  # cycle through each cell
             # cell_ct += 1
             for i in range(numturbs):  # cycle through each turbine
-                if (pow(cell.midpoint()[0] - mx[i], 2)
-                    + pow(cell.midpoint()[1] - my[i], 2)
-                    < pow(rad2, 2) + h):
+                if ((pow(cell.midpoint()[0] - mx[i], 2)
+                    + pow(cell.midpoint()[1] - my[i], 2))
+                    < (pow(rad2, 2) + h)):
                     cell_f[cell] = True
                     # if the midpoint of the cell is within a radius of a
                     # turbine
@@ -412,22 +412,24 @@ def rotatedPowerFunction(alpha, A, beta, mx, my, ma, up, numturbs,
         outvals = 500
         nx = [cos(alpha) * mx[i] - sin(alpha) * my[i] for i in range(numturbs)]
         ny = [sin(alpha) * mx[i] + cos(alpha) * my[i] for i in range(numturbs)]
-        interval_x = (max(nx) - min(nx)) * 2. / outvals
+        interval_x = (max(nx) - min(nx)) * 1.6 / outvals
         if interval_x > 0.01:
-            x_start = min(nx) - (max(nx) - min(nx)) * 0.5 + interval_x / 2.
-            x1 = min(nx) - (max(nx) - min(nx)) * 0.5
+            x_start = min(nx) - (max(nx) - min(nx)) * 0.1 + interval_x / 2.
+            x1 = min(nx) - (max(nx) - min(nx)) * 0.1
             x2 = max(nx) + (max(nx) - min(nx)) * 0.5
         else:
+            # provision for single line of turbines
             x_start = min(nx) - 100. + 200. / (2. * outvals)
             interval_x = 200. / outvals
             x1 = min(nx) - 100.
             x2 = max(nx) + 100.
-        interval_y = (max(ny) - min(ny)) * 2. / outvals
+        interval_y = (max(ny) - min(ny)) * 1.4 / outvals
         if interval_y > 0.01:
-            y_start = min(ny) - (max(ny) - min(ny)) * 0.5 + interval_y / 2.
-            y1 = min(ny) - (max(ny) - min(ny)) * 0.5
-            y2 = max(ny) + (max(ny) - min(ny)) * 0.5
+            y_start = min(ny) - (max(ny) - min(ny)) * 0.1 + interval_y / 2.
+            y1 = min(ny) - (max(ny) - min(ny)) * 0.2
+            y2 = max(ny) + (max(ny) - min(ny)) * 0.2
         else:
+            # provision for single line of turbines
             y_start = min(ny) - 100. + 200. / (2. * outvals)
             interval_y = 200. / outvals
             y1 = min(ny) - 100.
@@ -437,7 +439,16 @@ def rotatedPowerFunction(alpha, A, beta, mx, my, ma, up, numturbs,
         spacing_outy = ([spacing_outy_sub[-i]
                         for i in range(1, len(spacing_outy_sub) + 1)])
         for j in spacing_outy:
-            heat_out[0].append([up.sub(0)(i, j)[0] for i in spacing_outx])
+            try:
+                heat_out[0].append([up.sub(0)(i, j)[0] for i in spacing_outx])
+            except:
+                print('graph bounds: ', [x1, x2, y1, y2])
+                dummy = mesh.coordinates()
+                min_x = min([iii[0] for iii in dummy])
+                max_x = max([iii[0] for iii in dummy])
+                min_y = min([iii[1] for iii in dummy])
+                max_y = max([iii[1] for iii in dummy])
+                print('mesh bounds: ', [min_x, max_x, min_y, max_y])
         heat_out.append([x1, x2, y1, y2])
         # print(heat_out)
         return J, heat_out
@@ -1068,7 +1079,7 @@ def create_mesh(mx, my, mz, ma, rad2):
     # print('Lx ', Lx)
     mesh = RectangleMesh(Point(-Lx/2., -Ly/2.),
                          Point(Lx/2., Ly/2.), numx, numy)
-    dummy = mesh.coordinates()
+    # dummy = mesh.coordinates()
     # print('min x: ',min([i[0] for i in dummy]))
     # print('max x: ',max([i[0] for i in dummy]))
     # print('min y: ',min([i[1] for i in dummy]))
@@ -1081,10 +1092,12 @@ def create_mesh(mx, my, mz, ma, rad2):
                            'farm', mx, my, mz, ma, rad2)
         h = mesh.hmin()
     if print_mesh:
+        # print('site_x: ', site_x)
+        # print('site_y: ', site_y)
         mesh1 = []
         for each in mesh.coordinates():
             if abs(each[0]) < site_x and abs(each[1]) < site_y:
-                mesh1.append((float(each[0]), float(each[1])))
+                mesh1.append((each[0], each[1]))
     if adaptive_meshing:
         mesh = refine_mesh(mesh, site_x, site_y,
                            'turbines', mx, my, mz, ma, rad2)
@@ -1106,6 +1119,7 @@ def create_mesh(mx, my, mz, ma, rad2):
                     [iii[1] for iii in mesh1],
                     s=1,
                     c='k')
+
         plt.scatter(meshx2, meshy2, s=1, c='r')
         plt.axis('equal')
         # plt.scatter(mx,my,color = 'r', marker='*')
