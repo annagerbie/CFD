@@ -552,7 +552,7 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
                 jwakerad = (turbines[i].wakewidth[wd][0]) / 2.0   #radius of wake width
                 dist = turbines[i].distance[wd][0]
                 cd = np.sqrt(((jx-kx) ** 2.0) + ((jz - kz) ** 2.0))   #distance between centerline of wake and rotor hub           
-                int1_den = 2.0 * cd * krad
+                # int1_den = 2.0 * cd * krad
     
                 if cd + krad <= jwakerad:                         #if dsturbine is completely in usturbine wake, overlap = 100%
                     parpercent.append(1.0)
@@ -611,7 +611,7 @@ def Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif):
 #                            wakearea = np.pi * (jwakerad ** 2.0)
 #                            percentwake = wakearea / (np.pi * (krad ** 2.0))
 #                            parpercent.append(percentwake)
-                            parpercen.append(jwakerad / krad)
+                            parpercent.append(jwakerad / krad)
                             
                         else:
 #                            integrand1 = ((cd ** 2.0) + (krad ** 2.0) - (jwakerad ** 2.0)) / (2.0 * cd * krad)
@@ -1776,6 +1776,7 @@ hardcode = True
 rand_start = False
 inf_start = False
 wind_cases = [[1.0]]
+numturbs = 37
 #U0 = [8.0]      #mean wind speed, in m/s
 poss_directions = [270, 280, 290, 300, 310, 320, 330, 340, 350]
 poss_ws = [0., 5., 10., 15., 20., 25.]
@@ -2038,4 +2039,5 @@ with open(file_name, newline='') as csvfile:
             else:
                 index = outlier_conditions.index(condition)
                 outlier_ct[index] += 1
+
 print('done!')

@@ -61,10 +61,13 @@ RD = 80.
 
 # mesh parameters
 degree = 2
-Lx = 300. * RD  # size of mesh (NOT FARM)
-Ly = 300. * RD  # size of mesh (NOT FARM)
+Lx = 250. * RD  # size of mesh (NOT FARM)
+Ly = 250. * RD  # size of mesh (NOT FARM)
 numx = 100  # number of points in mesh
 numy = 100  # number of points in mesh
+# site/refinement constraints
+site_x = 40.*RD  # size of farm
+site_y = 40.*RD  # size of farm
 
 # number of inflow direction bins
 bins = 1  # Unidirectional wind
@@ -80,25 +83,24 @@ mlDenom = 2.  # mixing length denom - not sure how this is arrived at
 rad2 = 4. * RD
 
 # Ct = 0.75
-# Ct = 8./9. # limit for testing
-Ct = 0.861  # GE 1.5sle from Sandia
+Ct = 8./9. # limit for testing
+# Ct = 0.861  # GE 1.5sle from Sandia
+# Ct = 0.75
 # Cp = 0.34
-Cp = 16./27.  # betz limit for testing
-# site/refinement constraints
-site_x = 7.*RD  # size of farm
-site_y = 7.*RD  # size of farm
+Cp = 16. / 27.  # betz limit for testing
+
 
 adaptive_meshing = True
 
 # only one of these should be true to work
 restart = False  # seeded layout (must go into layout function to change seed)
 randStart = False  # random layout
-gridStart = False  # gridded layout - must have 16 turbines
+gridStart = True  # gridded layout - must have 16 turbines
 linearStart = False  # turbines in a row
 offgridStart = False
 test_turb = False
 old_good = False  # previous good layout
-coloradoStart = True
+coloradoStart = False
 if old_good:
     site_x = 30. * RD
     sity_y = 30. * RD
@@ -108,7 +110,7 @@ if old_good:
 elif offgridStart or gridStart:
     numturbs = 16
 elif linearStart:
-    numturbs = 10
+    numturbs = 3
 elif coloradoStart:
     RD = 77.
     radius = RD / 2.
@@ -120,7 +122,7 @@ elif coloradoStart:
 else:
     numturbs = 10
 
-heat_output = False
+heat_output = True
 print_mesh = True
 optimize = False
 checkpts = False  # creates plots of turbine movement throughout optimization
@@ -166,7 +168,7 @@ def refine_mesh(mesh, site_x, site_y, refine_where, mx, my, mz, ma, rad2):
     return mesh
 
 
-def createLayout(numturbs):
+def createLayout(numturbs, spacing):
     mx = []
     my = []
     mz = []
@@ -224,10 +226,10 @@ def createLayout(numturbs):
 
     elif linearStart:
         '''My adds'''
-        my = np.linspace(-initExtent*(site_x - radius),
-                         initExtent*(site_x - radius),
-                         numturbs)
-        mx = np.array([0] * numturbs)
+        mx = np.array([(i * spacing
+                        - ((numturbs - 1)
+                           * spacing / 2.)) for i in range(numturbs)])
+        my = np.array([0] * numturbs)
         mz = np.array([HH] * numturbs)
 
     elif offgridStart:
@@ -337,6 +339,7 @@ def createRotatedTurbineForce(mx, my, ma, A, beta, numturbs, alpha, V, mesh):
         for i, txt in enumerate(n):
             ax.annotate(txt, (nx[i], ny[i]))
         plt.savefig('initial_tf.png', bbox_inches='tight')
+        plt.close()
 
     # print('turbine force')
     for i in range(numturbs):
@@ -356,6 +359,7 @@ def createRotatedTurbineForce(mx, my, ma, A, beta, numturbs, alpha, V, mesh):
         for i, txt in enumerate(n):
             ax.annotate(txt, (nx[i], ny[i]))
         plt.savefig('final_tf.png', bbox_inches='tight')
+        plt.close()
     return tf
 
 
@@ -393,6 +397,7 @@ def rotatedPowerFunction(alpha, A, beta, mx, my, ma, up, numturbs,
         for i, txt in enumerate(n):
             ax.annotate(txt, (nx[i], ny[i]))
         plt.savefig('windspeeds.png', bbox_inches='tight')
+        plt.close()
 
     for i in range(numturbs):
         # rotation
@@ -596,28 +601,16 @@ def main(tf, wind_case, VQ):
     problem = NonlinearVariationalProblem(F, up_next, bc, J=J)
     solver = NonlinearVariationalSolver(problem)
     prm = solver.parameters
-    list_linear_solver_methods()
     solver.nonlinear_variational_solver = 'newton_solver'
     prm["newton_solver"]["absolute_tolerance"] = 1E-3  # 1E-8
     prm["newton_solver"]["relative_tolerance"] = 1E-3  # 1E-7
     prm["newton_solver"]["maximum_iterations"] = 120
     prm["newton_solver"]["relaxation_parameter"] = 1.0
-    prm["newton_solver"]["linear_solver"] = 'mumps'
-    # Added for server
-#    prm["newton_solver"]["krylov_solver"]["relative_tolerance"]=1e-3
-#    prm["newton_solver"]["krylov_solver"]["maximum_iterations"]=1000
-#    prm["newton_solver"]["linear_solver"] = 'gmres'
-#    prm["newton_solver"]["preconditioner"] = 'ilu'
-#    solver.solve()
-
-    try:
-        solver.solve()
-    except:
-        print('solver error')
-        return 'fuck', 'fuck'
-    # solve(F == 0, up_next, bc,
-    #       solver_parameters={"newton_solver":{"absolute_tolerance": 1e-8},
-    #       "newton_solver":{"maximum_iterations": 120}})
+    prm["newton_solver"]["linear_solver"] = 'gmres'
+    solver.solve()
+#    solve(F == 0, up_next, bc,
+#          solver_parameters={"newton_solver":{"absolute_tolerance": 1e-3},
+#          "newton_solver":{"maximum_iterations": 120}})
     u_next, p_next = split(up_next)
     # print('u_next: ', up_next.sub(0)(-Lx/2 + 0.000005,-Ly/2 + 0.000005)[0])
     # if optimize == False:
@@ -1069,6 +1062,7 @@ def print_graph(all_x, all_y, i, directory):
         os.makedirs(directory)
     plt.savefig(directory + str('/step_turb_' + str(i) + '.png'),
                 bbox_inches='tight')
+    plt.close()
 ###############################################################################
 
 
@@ -1129,7 +1123,8 @@ def create_mesh(mx, my, mz, ma, rad2, alpha):
         plt.scatter(meshx2, meshy2, s=1, c='r')
         plt.axis('equal')
         # plt.scatter(mx,my,color = 'r', marker='*')
-        plt.savefig('mesh_vis_colorado.png')
+        plt.savefig('mesh_vis_hardcode.png')
+        plt.close()
     print('mesh size: ', len(mesh.coordinates()))
     h = mesh.hmin()
 
@@ -1163,9 +1158,9 @@ if __name__ == "__main__":
 #                                              score_limit,
 #                                              num_runs)))
 
-    mx, my, mz = createLayout(numturbs)
     # array of 0.33?? Why?
-    aif = 0.314
+    # aif = 0.314
+    aif = 1. / 3.
     ma = [Constant(mm) for mm in aif * np.ones(numturbs)]
     # axial induction factor for GE 1.5sle
     # calculate the double integral of the smoothing kernel for
@@ -1175,197 +1170,75 @@ if __name__ == "__main__":
                              lambda x: 3*radius)
 
     B = beta[0]  # B=estimate of integral, without estimate of error
-    # otherwise go strait to final plotting routine, plot last inflow direction
-    mx_opt = [i for i in mx]
-    my_opt = [i for i in my]
-    mz_opt = [i for i in mz]
-    poss_directions = [270, 280, 290, 300, 310, 320, 330, 340, 350]
-    poss_ws = [0., 5., 10., 15., 20., 25.]
-    poss_ust = [0, 1, 2, 3, 4, 5]
-    error = [[0.] * numturbs for i in range(len(poss_directions))]
-    error_ct = [[0.] * numturbs for i in range(len(poss_directions))]
-    error2 = [[0.] * numturbs for i in range(len(poss_ws))]
-    error2_ct = [[0.] * numturbs for i in range(len(poss_ws))]
-    error3 = [[0.] * numturbs for i in range(len(poss_ust))]
-    error3_ct = [[0.] * numturbs for i in range(len(poss_ust))]
-    RSME = [[0.] * numturbs for i in range(len(poss_directions))]
-    # by wind direction
-    RSME2 = [[0.] * numturbs for i in range(len(poss_ws))]
-    # by wind speed
-    RSME3 = [[0.] * numturbs for i in range(len(poss_ust))]
-    # by number of upstream turbines
-    num_usturbines = ([0] * 10 + [2, 3, 2, 2, 2, 1]
-                      + [0] * 6 + [3, 1, 2, 3, 3, 2, 3, 1] + [0] * 6 + [1])
-    with open('colorado_wind_data_CLEANED.csv', newline='') as csvfile:
-        info = csv.reader(csvfile, delimiter=',', quotechar='|')
-        enum = 1
-        while os.path.isfile('CFD_colorado_results2/RMSE_CFD_colorado_ws' +
-                             str(enum) + '.csv'):
-            enum += 1
-        with open('CFD_colorado_results2/RMSE_CFD_colorado_ws' +
-                  str(enum) + '.csv', 'w+', newline='') as outfile:
-            full_write = csv.writer(outfile)
-            # num_lines = 0.
-            counter = 0
-
-            unique_conditions = [0, 1, 3, 5, 7, 9, 11, 12, 13, 14, 15, 17, 19,
-                                 20, 21, 22, 23, 24, 26, 27, 28, 33, 38, 41,
-                                 44, 49, 71, 73, 75, 79, 80, 86, 90, 91, 92,
-                                 96, 101, 102, 103, 104, 106, 111, 122, 123,
-                                 124, 125, 127, 130, 132, 133, 134, 135, 137,
-                                 140, 142, 143, 147, 157, 158, 160, 164, 166,
-                                 193, 195, 196, 199, 202, 208, 217, 218, 220,
-                                 221, 225, 226, 233, 242, 248, 250, 254, 281,
-                                 282, 285, 307, 354, 358, 360, 369, 371, 372,
-                                 385, 396, 413, 424, 444, 473, 477, 505, 570,
-                                 573, 574, 582, 585, 589, 601, 633, 728, 863,
-                                 871, 923, 924, 927, 929, 1010, 1014, 1088,
-                                 1110, 1143, 1170, 1173, 1259, 1304, 1367,
-                                 1369, 1370, 1375, 1383, 1386, 1387, 1388,
-                                 1389, 1393, 1394, 1441, 1829, 1858, 2070,
-                                 2365, 2497, 3080]
-            try:
-                beggining = [19]
-            except:
-                beggining = unique_conditions[22 * (enum - 5 - 1):]
-            # ending = 24 * enum
-            # unique_conditions = [1369, 2497]
-            for i, row in enumerate(info):  # subset for testing!
-                # if counter >= 10:
-                #     break
-                # counter += 1
-                if i in beggining:
-                    print('test number: ' + str(i))
-                    windsp = [float(row[6])]  # one wind speed
-                    dirs = [float(row[5]) / 180. * np.pi - 3*np.pi/2]
-                    # dirs = np.linspace(0, 2*pi, bins, endpoint = False)
-                    weights = np.ones(bins * len(windsp))/(bins * len(windsp))
-                    # assume even weightings
-                    wind_cases = []
-                    for i in dirs:
-                        for j in windsp:
-                            wind_cases.append((i, j))
-                            # tuple of wind speed + wind diretion
-                    print('wind_cases: ', wind_cases)
-                    if heat_output:
-                        Jfunc, cum_ws, heat_out = Eval_Objective(mx_opt,
-                                                                 my_opt, ma,
-                                                                 A, B,
-                                                                 numturbs,
-                                                                 True)
-                        if heat_out != 'error':
-                            plt.figure()
-                            plt.imshow(heat_out[0], cmap='hot',
-                                       interpolation='nearest',
-                                       extent=heat_out[1])
-                            plt.colorbar()
-                            # nx = ([cos(dirs[0])*mx[i] - sin(dirs[0])*my[i]
-                            #       for i in range(numturbs)])
-                            # ny = ([sin(dirs[0])*mx[i] + cos(dirs[0])*my[i]
-                            #       for i in range(numturbs)])
-                            # print('nx, ny: ', [(heat_out[2][jj], heat_out[3][jj]) for jj in range(len(heat_out[2]))])
-                            for i, j in zip(heat_out[2], heat_out[3]):
-                                plt.plot([i, i],
-                                         [j - radius, j + radius],
-                                         '-k')
-                            now = datetime.now()
-                            plt.title('Cross-Field Wind Speed')
-                            plt.xlabel('Crosswind Distance (m)')
-                            plt.ylabel('Downwind Distance (m)')
-                            plt.savefig('heat_out_'+str(now.month)+'_'
-                                        + str(now.day)+'_' + str(now.hour)
-                                        + '_' + str(now.minute) + '.png',
-                                        bbox_inches='tight')
-                    else:
-                        Jfunc, cum_ws = Eval_Objective(mx_opt, my_opt,
-                                                       ma, A, B, numturbs)
-
-                    turbines_realsp = [float(temp) for temp in row[7:]]
-                    # windspeeds measured from nacelles
-                    output_row = [float(this) for this in row] + cum_ws
-                    full_write.writerow(output_row)
-                    # print(row[5])
-                    rmse = sum([pow(turbines_realsp[iiii] - cum_ws[iiii],
-                                    2) for iiii in range(numturbs)])/numturbs
-                    rmse = np.sqrt(rmse)
-                    print('RMSE: ' + str(rmse))
-                    direction_coord = poss_directions.index(int(row[5]))
-    output = 'off'
-    '''
-    if output == 'on':
-        tot_dir = [0.] * len(error)
-        tot_ws = [0.] * len(error2)
-        tot_ust = [0.] * len(error3)
-        for i, j in enumerate(error):
-            try:
-                tot_dir[i] = np.sqrt(sum(j) / sum(error_ct[i]))
-            except:
-                tot_dir[i] = 'N/A'
-            for a, b in enumerate(j):
-                try:
-                    RSME[i][a] = np.sqrt(b / error_ct[i][a])
-                except:
-                    RSME[i][a] = 'N/A'
-        for i, j in enumerate(error2):
-            try:
-                tot_ws[i] = np.sqrt(sum(j) / sum(error2_ct[i]))
-            except:
-                tot_ws[i] = 'N/A'
-            for a, b in enumerate(j):
-                try:
-                    RSME2[i][a] = np.sqrt(b / error2_ct[i][a])
-                except:
-                    RSME2[i][a] = 'N/A'
-        for i, j in enumerate(error3):
-            try:
-                tot_ust[i] = np.sqrt(sum(j) / sum(error3_ct[i]))
-            except:
-                tot_ust[i] = 'N/A'
-            for a, b in enumerate(j):
-                try:
-                    RSME3[i][a] = np.sqrt(b / error3_ct[i][a])
-                except:
-                    RSME3[i][a] = 'N/A'
-        with open('RMSE_CFD_colorado_byturb_rotor.csv',
-                  'w+', newline='') as outfile:
-            write = csv.writer(outfile)
-            blank = ['']
-            blank.extend([i for i in range(37)])
-            write.writerow(blank)
-            for k, i in enumerate(RSME):
-                start_dir = [poss_directions[k]]
-                start_dir.extend(i)
-                write.writerow(start_dir)
-            write.writerow([])
-            for k, i in enumerate(RSME2):
-                start_ws = [poss_ws[k]]
-                start_ws.extend(i)
-                write.writerow(start_ws)
-            write.writerow([])
-            for k, i in enumerate(RSME3):
-                start_ust = [poss_ust[k]]
-                start_ust.extend(i)
-                write.writerow(start_ust)
-        with open('RMSE_CFD_colorado_rotor.csv',
-                  'w+', newline='') as outfile:
-            write = csv.writer(outfile)
-            write. writerow(poss_directions)
-            write.writerow(tot_dir)
-            write.writerow([])
-            write. writerow(poss_ws)
-            write.writerow(tot_ws)
-            write.writerow([])
-            write. writerow(poss_ust)
-            write.writerow(tot_ust)
-            # print('The final layout with '
-            #       + str(initial_num) + ' turbines has a score of: '
-            #       + str(score))
-    '''
+    # turb_spacings = [20., 40., 60., 80., 100., 120., 140., 160., 180., 200.,
+    #                  250., 300., 400., 500.]
+    turb_spacings = ['dummy']
+    turb1sp = []
+    turb2sp = []
+    turb3sp = []
+    time_all = []
+    for i, j in enumerate(turb_spacings):
+        time_start = time()
+        mx, my, mz = createLayout(numturbs, j)
+        print('test number: ' + str(i))
+        windsp = [10.]  # one wind speed
+        dirs = [0.]
+        # dirs = np.linspace(0, 2*pi, bins, endpoint = False)
+        weights = np.ones(bins * len(windsp))/(bins * len(windsp))
+        # assume even weightings
+        wind_cases = []
+        for i in dirs:
+            for j in windsp:
+                wind_cases.append((i, j))
+                # tuple of wind speed + wind diretion
+        print('wind_cases: ', wind_cases)
+        if heat_output:
+            Jfunc, cum_ws, heat_out = Eval_Objective(mx,
+                                                     my, ma,
+                                                     A, B,
+                                                     numturbs,
+                                                     True)
+            if heat_out != 'error':
+                plt.figure()
+                plt.imshow(heat_out[0], cmap='hot',
+                           interpolation='nearest',
+                           extent=heat_out[1])
+                plt.colorbar()
+                for i, j in zip(heat_out[2], heat_out[3]):
+                    plt.plot([i, i],
+                             [j - radius, j + radius],
+                             '-k')
+                now = datetime.now()
+                plt.title('Cross-Field Wind Speed')
+                plt.xlabel('Crosswind Distance (m)')
+                plt.ylabel('Downwind Distance (m)')
+                plt.savefig('heat_out_'+str(now.month)+'_'
+                            + str(now.day)+'_' + str(now.hour)
+                            + '_' + str(now.minute) + '.png',
+                            bbox_inches='tight')
+                plt.close()
+        else:
+            Jfunc, cum_ws = Eval_Objective(mx, my,
+                                           ma, A, B, numturbs)
+        turb1sp.append(cum_ws[0])
+        turb2sp.append(cum_ws[1])
+        try:
+            turb3sp.append(cum_ws[2])
+        except IndexError:
+            pass
+        time_all.append((time() - time_start) / 60.)
+    print(turb1sp)
+    print(turb2sp)
+    print(time_all)
+    turb1sp = ['Speed at turbine 1'] + turb1sp
+    turb2sp = ['Speed at turbine 2'] + turb2sp
+    turb3sp = ['Speed at turbine 3'] + turb3sp
+    time_all = ['Analysis time'] + time_all
+    with open('CFD_hardcode_' + str(numturbs)
+              + 'turb' + str(Cp) + '.txt', 'w+', newline='') as outfile:
+        full_write = csv.writer(outfile)
+        full_write.writerow(turb1sp)
+        full_write.writerow(turb2sp)
+        full_write.writerow(turb3sp)
+        full_write.writerow(time_all)
     print('done!')
-    '''
-    u_rot_opt_out=project(u_rot_opt, V)
-
-    uStr='u.pvd'
-    file2 = File(uStr)
-    file2 << u_rot_opt_out
-    '''
